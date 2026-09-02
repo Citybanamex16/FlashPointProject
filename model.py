@@ -80,6 +80,67 @@ class FlashPointModel(Model):
                 tipo_poi = self.bolsa_poi.pop()
                 self.mapa_nodos[pos].contenido.append(POI(tipo_poi))
 
+    # ==== Sistema de DTO Python -> Unity === #
+    def _exportar_nodos_dto(self):
+        nodos_lista = []
+        for nodo in self.mapa_nodos.values():
+            x, y = nodo.pos 
+            
+            poi_dto = None
+            for item in nodo.contenido:
+                if isinstance(item, POI):
+                    poi_dto = {
+                        "tipo": item.tipo.name,      
+                        "revelado": item.revelado    
+                    }
+                    break 
+            
+            nodo_dto = {
+                "x": x,
+                "y": y,
+                "fuego": nodo.estado_fuego.name, 
+                "poi": poi_dto
+            }
+            nodos_lista.append(nodo_dto)
+            
+        return nodos_lista
+
+    def _exportar_aristas_dto(self):
+        aristas_lista = []
+        procesados = set() 
+        
+        for nodo in self.mapa_nodos.values():
+            pos_a = nodo.pos 
+            
+            for nodo_vecino, arista in nodo.vecinos.items():
+                if arista is not None and arista not in procesados:
+                    procesados.add(arista) 
+                    pos_b = nodo_vecino.pos 
+                    
+                    arista_dto = {
+                        "posA": {"x": pos_a[0], "y": pos_a[1]},
+                        "posB": {"x": pos_b[0], "y": pos_b[1]},
+                        "tipo": arista.tipo.name  
+                    }
+                    
+                    if isinstance(arista, Puerta):
+                        arista_dto["cerrado"] = arista.cerrado
+                    elif isinstance(arista, Muro):
+                        arista_dto["hp"] = arista.hp
+                    
+                    aristas_lista.append(arista_dto)
+                    
+        return aristas_lista
+
+    def get_setup_dto(self):
+        return {
+            "width": self.grid.width,
+            "height": self.grid.height,
+            "nodes": self._exportar_nodos_dto(),
+            "edges": self._exportar_aristas_dto()
+        }
+
+    ## === Visualizacion DEBUG === ##
     def imprimir_tablero_debug(self):
         print("\n" + "=" * 48)
         print("             DEBUG: MAPA DE FLASH POINT")
