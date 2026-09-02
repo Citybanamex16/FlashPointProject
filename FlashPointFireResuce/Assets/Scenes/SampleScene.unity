@@ -459,8 +459,8 @@ MonoBehaviour:
   m_fontMaterials: []
   m_fontColor32:
     serializedVersion: 2
-    rgba: 4278190335
-  m_fontColor: {r: 1, g: 0, b: 0, a: 1}
+    rgba: 4278255366
+  m_fontColor: {r: 0.022774577, g: 1, b: 0, a: 1}
   m_enableVertexGradient: 0
   m_colorMode: 3
   m_fontColorGradient:
@@ -926,6 +926,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   view: {fileID: 1232864634}
+  boardBuilder: {fileID: 0}
 --- !u!1 &1154865922
 GameObject:
   m_ObjectHideFlags: 0
@@ -1001,9 +1002,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5c258f88210174f25baccae7a06f6972, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  nameInput: {fileID: 0}
-  scoreInput: {fileID: 0}
-  sendButton: {fileID: 0}
   statusText: {fileID: 400215202}
 --- !u!1 &1298741554
 GameObject:
