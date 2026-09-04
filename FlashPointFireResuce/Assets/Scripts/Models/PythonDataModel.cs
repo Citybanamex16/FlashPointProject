@@ -1,18 +1,58 @@
 using System;
+using System.Collections.Generic;
 
-// [Serializable] le indica a Unity que esta clase se puede convertir a JSON string
+// ==========================================
+// 1. ESTRUCTURAS AUXILIARES / PRIMITIVOS
+// ==========================================
+
 [Serializable]
-public class PlayerDataPayload
+public class Vector2DTO
 {
-    public string playerName;
-    public int score;
+    public int x;
+    public int y;
 }
 
 [Serializable]
-public class PythonResponse
+public class PoiDTO
 {
-    public string status;
-    public string playerName;
-    public int calculatedLevel;
-    public string message;
+    public string tipo;      // "VICTIMA" o "FALSA_ALARMA"
+    public bool revelado;
+}
+
+// ==========================================
+// 2. ELEMENTOS DEL TABLERO (NODOS Y ARISTAS)
+// ==========================================
+
+[Serializable]
+public class NodeDTO
+{
+    public int x;
+    public int y;
+    public string fuego;     // "LIMPIO", "HUMO", "FUEGO"
+    public PoiDTO poi;       // Objeto anidado (null si no hay POI)
+}
+
+[Serializable]
+public class EdgeDTO
+{
+    public Vector2DTO posA;  // {"x": 0, "y": 1}
+    public Vector2DTO posB;  // {"x": 1, "y": 1}
+    public string tipo;      // "MURO" o "PUERTA"
+    
+    // Propiedades opcionales según el tipo de arista
+    public bool cerrado;     // Solo para Puertas
+    public int hp;           // Solo para Muros
+}
+
+// ==========================================
+// 3. EL DTO PRINCIPAL (SETUP)
+// ==========================================
+
+[Serializable]
+public class SetupDTO
+{
+    public int width;
+    public int height;
+    public List<NodeDTO> nodes;
+    public List<EdgeDTO> edges;
 }

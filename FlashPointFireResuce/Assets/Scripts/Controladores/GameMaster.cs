@@ -1,40 +1,50 @@
 using UnityEngine;
 
-public class GameController : MonoBehaviour
+public class GameMaster : MonoBehaviour
 {
-    [SerializeField] private GameView view; // Referencia a la Vista en escena
+    [Header("Referencias")]
+    public GameView view; // Referencia a la Vista en escena
+    public BoardBuilder boardBuilder; //Ref a Manager de Setup
     private PythonApiService _apiService;
+
+    private bool setupStarted = false;
 
     private void Awake()
     {
         _apiService = new PythonApiService();
     }
 
-    public async void requestPythonDataUpdate()
-    {
-        // 1. Leemos los datos de la Vista
-        PlayerDataPayload payload = new PlayerDataPayload
-        {
-            playerName = view.PlayerName,
-            score = view.Score
-        };
 
-        // 2. Activamos Spinner
+    private void Start(){
+
+        InitMap();
+
+    }
+
+
+
+    async private void InitMap(){
+
+        //1. Activamos Spinner
         view.SetLoadingState(true);
 
-        // 3. Solicitamos el servicio de red
-        PythonResponse response = await _apiService.SendDataToPythonAsync(payload);
+        //2. Solicitamos servicio de red 
+        SetupDTO response = await _apiService.requestSetupDTO();
 
-        // 4. Quitamos el Spinner
+        //3. Quitamos el spinner y evaluamos Inicializacion
         view.SetLoadingState(false);
 
         if (response != null)
         {
-            view.DisplayStatus(response.message);
+            boardBuilder.BuildInitialMap(response);
+            setupStarted = true;
         }
         else
         {
-            view.DisplayStatus("Error al conectar con Python.");
+            
+            setupStarted = false;
         }
+
     }
+
 }
