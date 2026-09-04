@@ -45,6 +45,8 @@ public class GameMaster : MonoBehaviour
             setupStarted = false;
         }
 
+        view.SetLoadingState(false);
+
     }
 
 }
