@@ -1,6 +1,32 @@
+from flask import Flask, jsonify
+from flask_cors import CORS
 from model import FlashPointModel
 
-if __name__ == "__main__":
-    # Test initialization
-    modelo = FlashPointModel(numAgents=0, width=10, height=8)
-    modelo.imprimir_tablero_debug()
+'''
+# 1. Creación de la app web
+app = Flask(__name__)
+CORS(app) 
+
+# 2. Instanciación del Modelo
+modelo = FlashPointModel(numAgents=0, width=10, height=8)
+
+# 3. Definición de la Ruta / Endpoint
+@app.route('/api/process', methods=['GET']) 
+def GetSetupData():
+    # Devuelve el DTO con el estado completo del tablero a Unity
+    return jsonify(modelo.get_setup_dto()), 200
+
+if __name__ == '__main__':
+    # Ejecuta el servidor de Flask directamente en el hilo principal
+    print("🚀 Servidor escuchando en http://127.0.0.1:5000/api/process")
+    app.run(host='127.0.0.1', port=5000, debug=False)
+'''
+
+
+from model import FlashPointModel
+
+# Instantiate the model
+modelo = FlashPointModel(numAgents=0, width=10, height=8)
+
+# Print the ASCII grid straight to your terminal log
+modelo.visualizar_matplot()

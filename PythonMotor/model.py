@@ -2,6 +2,8 @@ import random
 from mesa import Model
 from mesa.space import MultiGrid
 from core_types import EstadoFuego, TipoPOI, POI, Nodo, Muro, Puerta
+import matplotlib.patches as patches
+import matplotlib.pyplot as plt
 
 class FlashPointModel(Model):
     def __init__(self, numAgents, width, height):
@@ -66,7 +68,7 @@ class FlashPointModel(Model):
                 self._colocar_borde(pos_a, pos_b, Puerta())
 
     def _preparar_juego_familiar(self):
-        fuegos_iniciales = [(2,2), (2,3), (3,2), (3,4), (4,4), (5,5), (6,5), (7,6), (4,2), (5,3)]
+        fuegos_iniciales = [(6,1), (6,2), (7,2), (4,3),(2,4),(3,4),(4,4),(5,4),(2,5),(3,5)]
         for pos in fuegos_iniciales:
             if pos in self.mapa_nodos:
                 self.mapa_nodos[pos].estado_fuego = EstadoFuego.FUEGO
@@ -74,12 +76,74 @@ class FlashPointModel(Model):
         self.bolsa_poi = [TipoPOI.VICTIMA] * 10 + [TipoPOI.FALSA_ALARMA] * 5
         random.shuffle(self.bolsa_poi)
         
-        pois_iniciales = [(2,4), (5,1), (7,4)]
+        pois_iniciales = [(1,2), (8,2), (4,5)]
         for pos in pois_iniciales:
             if pos in self.mapa_nodos:
                 tipo_poi = self.bolsa_poi.pop()
                 self.mapa_nodos[pos].contenido.append(POI(tipo_poi))
+        
 
+    # ==== Sistema de DTO Python -> Unity === #
+    def _exportar_nodos_dto(self):
+        nodos_lista = []
+        for nodo in self.mapa_nodos.values():
+            x, y = nodo.pos 
+            
+            poi_dto = None
+            for item in nodo.contenido:
+                if isinstance(item, POI):
+                    poi_dto = {
+                        "tipo": item.tipo.name,      
+                        "revelado": item.revelado    
+                    }
+                    break 
+            
+            nodo_dto = {
+                "x": x,
+                "y": y,
+                "fuego": nodo.estado_fuego.name, 
+                "poi": poi_dto
+            }
+            nodos_lista.append(nodo_dto)
+            
+        return nodos_lista
+
+    def _exportar_aristas_dto(self):
+        aristas_lista = []
+        procesados = set() 
+        
+        for nodo in self.mapa_nodos.values():
+            pos_a = nodo.pos 
+            
+            for nodo_vecino, arista in nodo.vecinos.items():
+                if arista is not None and arista not in procesados:
+                    procesados.add(arista) 
+                    pos_b = nodo_vecino.pos 
+                    
+                    arista_dto = {
+                        "posA": {"x": pos_a[0], "y": pos_a[1]},
+                        "posB": {"x": pos_b[0], "y": pos_b[1]},
+                        "tipo": arista.tipo.name  
+                    }
+                    
+                    if isinstance(arista, Puerta):
+                        arista_dto["cerrado"] = arista.cerrado
+                    elif isinstance(arista, Muro):
+                        arista_dto["hp"] = arista.hp
+                    
+                    aristas_lista.append(arista_dto)
+                    
+        return aristas_lista
+
+    def get_setup_dto(self):
+        return {
+            "width": self.grid.width,
+            "height": self.grid.height,
+            "nodes": self._exportar_nodos_dto(),
+            "edges": self._exportar_aristas_dto()
+        }
+
+    ## === Visualizacion DEBUG === ##
     def imprimir_tablero_debug(self):
         print("\n" + "=" * 48)
         print("             DEBUG: MAPA DE FLASH POINT")
@@ -141,3 +205,87 @@ class FlashPointModel(Model):
         if isinstance(borde, Puerta):
             return "D" if borde.cerrado else "d"
         return " "
+
+    # otra visualizacion debug pero mas nice
+    def visualizar_matplot(self, figsize=(10, 8)):
+        fig, ax = plt.subplots(figsize=figsize)
+
+        color_fuego = {
+            EstadoFuego.LIMPIO: "#E0E0E0",  # Gris claro (exterior/limpio)
+            EstadoFuego.HUMO: "#808080",  # Gris oscuro
+            EstadoFuego.FUEGO: "#FF4500",  # Rojo anaranjado
+        }
+
+        # 1. Dibujar el fondo de cada Celda y Hazards
+        for (x, y), nodo in self.mapa_nodos.items():
+            color = color_fuego.get(nodo.estado_fuego, "#FFFFFF")
+            rect = patches.Rectangle(
+                (x, y), 1, 1, facecolor=color, edgecolor="#D3D3D3", lw=0.5
+            )
+            ax.add_patch(rect)
+
+            # Marcador de POI
+            if any(isinstance(c, POI) for c in nodo.contenido):
+                ax.text(
+                    x + 0.5,
+                    y + 0.5,
+                    "?",
+                    ha="center",
+                    va="center",
+                    fontsize=14,
+                    fontweight="bold",
+                    color="black",
+                )
+
+        # 2. Dibujar Muros y Puertas en los bordes
+        procesados = set()
+        for (x, y), nodo in self.mapa_nodos.items():
+            for vecino, arista in nodo.vecinos.items():
+                if arista is None or arista in procesados:
+                    continue
+                procesados.add(arista)
+
+                nx, ny = vecino.pos
+
+                # Determinar coordenadas del segmento entre celdas
+                if nx == x + 1:  # Borde vertical (Derecha)
+                    line_x, line_y = [x + 1, x + 1], [y, y + 1]
+                elif nx == x - 1:  # Borde vertical (Izquierda)
+                    line_x, line_y = [x, x], [y, y + 1]
+                elif ny == y + 1:  # Borde horizontal (Arriba)
+                    line_x, line_y = [x, x + 1], [y + 1, y + 1]
+                else:  # Borde horizontal (Abajo)
+                    line_x, line_y = [x, x + 1], [y, y]
+
+                # Estilizar según tipo y estado
+                if isinstance(arista, Muro):
+                    if arista.hp == 2:
+                        ax.plot(
+                            line_x,
+                            line_y,
+                            color="black",
+                            lw=4,
+                            solid_capstyle="round",
+                        )
+                    elif arista.hp == 1:
+                        ax.plot(
+                            line_x,
+                            line_y,
+                            color="#8B4513",
+                            lw=2.5,
+                            linestyle="--",
+                        )
+                elif isinstance(arista, Puerta):
+                    color_p = "#0000FF" if arista.cerrado else "#32CD32"
+                    ax.plot(line_x, line_y, color=color_p, lw=3, linestyle=":")
+
+        # 3. Ajustes de vista y ejes
+        ax.set_xlim(0, self.grid.width)
+        ax.set_ylim(0, self.grid.height)
+        ax.set_xticks(range(self.grid.width + 1))
+        ax.set_yticks(range(self.grid.height + 1))
+        ax.set_aspect("equal")
+        ax.grid(False)
+        plt.title("Flash Point: Fire Rescue - Tablero")
+        plt.show()
+
