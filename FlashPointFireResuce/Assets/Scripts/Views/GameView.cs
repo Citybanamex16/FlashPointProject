@@ -10,6 +10,11 @@ public class GameView : MonoBehaviour
 
     public void SetLoadingState(bool isLoading)
     {
-        statusText.text = isLoading ? "Procesando en Python..." : statusText.text;
+        if(isLoading){
+            statusText.text = "Loading...";
+        }
+        else{
+            statusText.text = "¡Ready!";
+        }
     }
 }
