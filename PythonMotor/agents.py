@@ -1,4 +1,4 @@
 from mesa import Agent
 from core_types import EstadoFuego, TipoArista, TipoPOI, Nodo
 
-# Your teammate will write the Firefighter class here.
+# Aqui va el agenta checa eso oscar porfa gracias tqm bai :3    
