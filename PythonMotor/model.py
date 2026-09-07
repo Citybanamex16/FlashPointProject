@@ -350,6 +350,14 @@ class FlashPointModel(Model):
             "edges": self._exportar_aristas_dto()
         }
 
+    def get_step_dto(self):
+
+        return{
+        "nodes":self,
+        "edges":self,
+        
+        }
+
     ## === Visualización DEBUG === ##
     def imprimir_tablero_debug(self):
         # Dibuja el tablero como texto en consola para depuración rápida

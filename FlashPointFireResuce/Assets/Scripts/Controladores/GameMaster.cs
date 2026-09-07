@@ -5,6 +5,7 @@ public class GameMaster : MonoBehaviour
     [Header("Referencias")]
     public GameView view; // Referencia a la Vista en escena
     public BoardBuilder boardBuilder; //Ref a Manager de Setup
+    public BoardManager boardManager;
     private PythonApiService _apiService;
 
     private bool setupStarted = false;
@@ -36,8 +37,10 @@ public class GameMaster : MonoBehaviour
 
         if (response != null)
         {
-            boardBuilder.BuildInitialMap(response);
+            var (nodesMap, edgesMap) = boardBuilder.BuildInitialMap(response);
             setupStarted = true;
+            boardManager.InitializeSimulation(nodesMap,edgesMap);
+
         }
         else
         {

@@ -19,72 +19,70 @@ public CameraController MainCamara;
 
 private SetupDTO _lastSetupData;
 
-    // Start is called before the first frame update
-    void Start()
+
+
+    public (Dictionary<Vector2Int, NodeView> nodesMap, Dictionary<string, EdgeView> edgesMap) BuildInitialMap(SetupDTO setupData)
     {
-        
-    }
+        _lastSetupData = setupData;
 
-    // Update is called once per frame
-    void Update()
-    {
-        
-    }
+        var nodesMap = ConstruirNodos(setupData);
+        var edgesMap = ConstruirAristas(setupData);
 
+        MainCamara.AdjustCameraToBoard(setupData.width, setupData.height, cellSize);
 
-
-    public void BuildInitialMap(SetupDTO Setupdata){
-        print("Generating map...");
-        Setupdata.ImprimirResumen();
-
-        _lastSetupData = Setupdata;
-
-        ConstruirNodos(Setupdata);
-
-        ConstruirAristas(Setupdata);
-
-        MainCamara.AdjustCameraToBoard(Setupdata.width, Setupdata.height, cellSize);
-
+        return (nodesMap, edgesMap);
     }
 
 
-    private void ConstruirNodos(SetupDTO setupData)
+    private Dictionary<Vector2Int, NodeView> ConstruirNodos(SetupDTO setupData)
     {
-        // Acceso directo a la lista setupData.nodes
+        var nodeViews = new Dictionary<Vector2Int, NodeView>();
+
         foreach (NodeDTO nodeData in setupData.nodes)
         {
-            // Calculamos la posición en mundo usando la matemática del CELL_SIZE
             Vector3 position = GetWorldPosition(nodeData.x, nodeData.y);
-
-            // Instanciamos el Prefab visual de la casilla
             GameObject nodeGO = Instantiate(tile, position, Quaternion.identity, transform);
             nodeGO.name = $"Node_({nodeData.x},{nodeData.y})";
+
+            // Extraemos el Script del prefab para poder manipularlo.
+            NodeView nodeView = nodeGO.GetComponent<NodeView>();
+            if (nodeView != null)
+            {
+                nodeView.SetInitialState(nodeData);
+                nodeViews.Add(new Vector2Int(nodeData.x, nodeData.y), nodeView);
+            }
         }
+        return nodeViews;
     }
 
-    private void ConstruirAristas(SetupDTO setupData)
+    private Dictionary<string, EdgeView> ConstruirAristas(SetupDTO setupData)
     {
-        // Acceso directo a la lista setupData.edges
+        var edgeViews = new Dictionary<string, EdgeView>();
+
         foreach (EdgeDTO edgeData in setupData.edges)
         {
-            // 1. Obtener posiciones en mundo de ambos nodos extremos
             Vector3 posA = GetWorldPosition(edgeData.posA.x, edgeData.posA.y);
             Vector3 posB = GetWorldPosition(edgeData.posB.x, edgeData.posB.y);
-
-            // 2. Calcular Punto Medio exacto para colocar el Muro/Puerta
             Vector3 middlePosition = (posA + posB) / 2.0f;
-
-            // 3. Calcular Rotación basada en si la alineación es horizontal o vertical
+            
             bool esMuroVertical = edgeData.posA.x != edgeData.posB.x;
             Quaternion rotation = esMuroVertical ? Quaternion.Euler(0, 90f, 0) : Quaternion.identity;
 
-            // 4. Seleccionar Prefab correcto según el Enum DTO ("MURO" o "PUERTA")
-            GameObject prefabToSpawn = (edgeData.tipo == "PUERTA") ? tile : wall;
-
-            // 5. Instanciar en la escena
+            GameObject prefabToSpawn = (edgeData.tipo == "PUERTA") ? puerta : wall;
             GameObject edgeGO = Instantiate(prefabToSpawn, middlePosition, rotation, transform);
-            edgeGO.name = $"Edge_{edgeData.tipo}_({edgeData.posA.x},{edgeData.posA.y})-({edgeData.posB.x},{edgeData.posB.y})";
+
+            // Generamos una clave única en texto: "0,1-1,1"
+            string edgeKey = GetEdgeKey(edgeData.posA.x, edgeData.posA.y, edgeData.posB.x, edgeData.posB.y);
+            edgeGO.name = $"Edge_{edgeData.tipo}_[{edgeKey}]";
+
+            EdgeView edgeView = edgeGO.GetComponent<EdgeView>();
+            if (edgeView != null)
+            {
+                edgeView.SetInitialState(edgeData);
+                edgeViews.Add(edgeKey, edgeView);
+            }
         }
+        return edgeViews;
     }
 
     /// <summary>
@@ -94,6 +92,8 @@ private SetupDTO _lastSetupData;
     {
         return new Vector3(x * cellSize, 0f, y * cellSize);
     }
+
+    public string GetEdgeKey(int x1, int y1, int x2, int y2) => $"{x1},{y1}-{x2},{y2}";
 
 
 /// ===== Debug en Gizmos de inicializacion  basado en motor de dibujo de unity ===
