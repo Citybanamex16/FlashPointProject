@@ -3,13 +3,14 @@ from flask_cors import CORS
 from model import FlashPointModel
 
 
+
 # 1. Creación de la app web
 app = Flask(__name__)
 CORS(app) 
 
 # 2. Instanciación del Modelo
 modelo = FlashPointModel(numAgents=0, width=10, height=8)
-
+'''
 # 3. Definición de la Ruta / Endpoint
 @app.route('/api/process', methods=['GET']) 
 def GetSetupData():
@@ -22,6 +23,21 @@ if __name__ == '__main__':
     #modelo.visualizar_matplot()
 
 
+
+    #print("📊 Visualización inicial del modelo:")
+    #modelo.visualizar_matplot()
+
+
     # Ejecuta el servidor de Flask directamente en el hilo principal
     print("🚀 Servidor escuchando en http://127.0.0.1:5000/api/process")
     app.run(host='127.0.0.1', port=5000, debug=False)
+'''
+
+
+from model import FlashPointModel
+
+# Instantiate the model
+modelo = FlashPointModel(numAgents=0, width=10, height=8)
+
+# Print the ASCII grid straight to your terminal log
+modelo.visualizar_matplot()
