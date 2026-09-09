@@ -56,27 +56,25 @@ class FlashPointModel(Model):
             print(message)
 
     def step(self):
-        if self.estado_juego != "EN_CURSO":
-            self._print(f"[FIN] {self.estado_juego}")
-            return
+        for agent in self.agents:
+            agent.step()
 
-        self._print("\n--- TURNO ---")
+            self._print("\n--- TURNO ---")
+            # 1. Turnos de los agentes
+            # 2. Fase de propagación del fuego
+            self.avanzar_fuego()
+            # 3. Resolver víctimas atrapadas y bomberos derribados
+            self._resolver_knockdowns()
+            # 4. Reponer POIs en el tablero
+            self._reponer_pois()
+            # 5. Evaluar condiciones de victoria/derrota
+            self.evaluar_estado_juego()
 
-        # 1. Turnos de los agentes
-        self.agents.shuffle_do("step")
-
-        # 2. Fase de propagación del fuego
-        self.avanzar_fuego()
-
-        # 3. Resolver víctimas atrapadas y bomberos derribados
-        self._resolver_knockdowns()
-
-        # 4. Reponer POIs en el tablero
-        self._reponer_pois()
-
-        # 5. Evaluar condiciones de victoria/derrota
-        self.evaluar_estado_juego()
-
+            if self.estado_juego != "EN_CURSO":
+                self._print(f"[FIN] {self.estado_juego}")
+                return
+            
+            
     def evaluar_estado_juego(self):
         if self.victimas_salvadas >= 7:
             self.estado_juego = "VICTORIA"
