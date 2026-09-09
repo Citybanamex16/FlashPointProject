@@ -9,20 +9,22 @@ class Role(Enum):
     SOLDIER = "Soldier"
 
 class Rescuer(Agent):
-    def __init__(self, unique_id, model, role=Role.SEARCHER):
-        super().__init__(unique_id, model)
+    def __init__(self, model, role=Role.SEARCHER): 
+        super().__init__(model) 
         self.role = role
-        self.ap = 4  # AP para el turno actual
-        self.saved_ap = 0  # AP guardados para el siguiente turno
+        self.ap = 4 
+        self.saved_ap = 0  
         self.llevando_victima = False
 
     def step(self):
-        # Turno del agente: asignar AP, ejecutar FSM, y almacenar AP sobrante
-        # 1. Asignar AP para el turno actual (máximo 8, incluyendo guardados)
-        self.ap = min(8, 4 + self.saved_ap)
-        self.saved_ap = 0
+        # 1. Fase de Ingreso: Añadir 4 AP, limitando el total a un máximo de 8
+        self.ap = self.saved_ap + 4
+        if self.ap > 8:
+            self.ap = 8
+            
+        self.saved_ap = 0 # Limpiamos el banco mientras el agente actúa
 
-        # 2. Ejecutar FSM hasta que se agoten los APs
+        # 2. Fase de Acción: Ejecutar FSM hasta agotar AP o no tener acciones viables
         while self.ap > 0:
             self._interactuar_celda_actual()
 
@@ -32,10 +34,13 @@ class Rescuer(Agent):
                 action_taken = self._ejecutar_estado_search()
 
             if not action_taken:
+                # El agente no pudo hacer nada (bloqueado o sin AP suficiente para la acción deseada)
                 break
 
-        # 3. Guardar AP sobrante para el siguiente turno (máximo 4)
+        # 3. Fase de Limpieza: Guardar AP sobrante (máximo 4)
         self.saved_ap = min(4, self.ap)
+        self.ap = 0 # Dejamos ap en 0 fuera de su turno para evitar ambigüedades de estado
+
 
     def _obtener_costo_real_arista(self, arista):
         # Calcula el costo físico real en AP para interactuar con una arista (puerta o muro).
@@ -78,9 +83,9 @@ class Rescuer(Agent):
             if self.role == Role.WALLBREAKER:
                 return arista.hp * 1.0  # Prefiere romper muros
             elif self.role == Role.SEARCHER:
-                return arista.hp * 6.0  # Evita romper muros a menos que sea necesario
+                return arista.hp * 6.0  # Evita romper muros a menos que sea requerido
             else:
-                return arista.hp * 2.0  # Costo moderado estandard
+                return arista.hp * 3.0  # Costo moderado estandard + 1 para evitar muros tambien 
 
         return 0
 
@@ -97,9 +102,9 @@ class Rescuer(Agent):
         return max(1.0, peso_base)
 
     def _es_preservacion_estructural_activa(self):
-        # Determina si la preservación estructural está activa (cuando el daño acumulado es >= 18).
-        dano_acumulado = 24 - self.model.marcadores_dano
-        return dano_acumulado >= 18
+        # Determina si la preservación estructural está activa (quedan 6 o menos marcadores de daño)
+        return self.model.marcadores_dano <= 12
+
 
     def _es_salida(self, pos):
         # Determina si una posición dada es una salida.
@@ -190,10 +195,24 @@ class Rescuer(Agent):
         costo_real = self._obtener_costo_real_nodo(nodo_destino)
         if self.ap >= costo_real:
             self.ap -= costo_real
+            
+            # --- SINCRONIZACIÓN DE ESTADO ---
+            # Remover del nodo de origen
+            if self in nodo_actual.contenido:
+                nodo_actual.contenido.remove(self)
+                
+            # Mover en el motor de Mesa
             self.model.grid.move_agent(self, siguiente_pos)
+            
+            # Añadir al nodo de destino
+            nodo_destino.contenido.append(self)
+            # --------------------------------
+            
             return True
 
         return False
+
+
 
     def _ejecutar_estado_search(self):
         # SEARCH Mode: Prioriza la búsqueda de POIs activos y rescate de víctimas.

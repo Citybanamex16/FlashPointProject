@@ -5,7 +5,7 @@ from model import FlashPointModel
 plt.ion()
 
 print("Inicializando FlashPointModel (10x8 - Reglas Familiares)...")
-modelo = FlashPointModel(numAgents=0, width=10, height=8)
+modelo = FlashPointModel(numAgents=4, width=10, height=8)
 
 # Renderizar estado inicial
 modelo.visualizar_matplot()
