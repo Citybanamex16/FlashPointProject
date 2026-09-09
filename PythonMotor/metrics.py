@@ -140,7 +140,7 @@ def ejecutar_partida(game_number, total_games, max_steps=300):
     """
 
     model = MeasuredFlashPointModel(
-        numAgents=2,
+        numAgents=4,
         width=10,
         height=8,
     )
@@ -164,13 +164,13 @@ def ejecutar_partida(game_number, total_games, max_steps=300):
     else:
         resultado = "LIMITE"
 
-    print(
-        f"Game {game_number:>2}/{total_games} | "
-        f"{resultado:<8} | "
-        f"{steps:>3} turns | "
-        f"Saved: {model.victimas_salvadas} | "
-        f"Lost: {model.victimas_perdidas}"
-    )
+    # print(
+    #     f"Game {game_number:>2}/{total_games} | "
+    #     f"{resultado:<8} | "
+    #     f"{steps:>3} turns | "
+    #     f"Saved: {model.victimas_salvadas} | "
+    #     f"Lost: {model.victimas_perdidas}"
+    # )
 
     return model
 
@@ -180,7 +180,7 @@ def ejecutar_partida(game_number, total_games, max_steps=300):
 # ============================================================
 
 def ejecutar_batch(
-    num_games=10,
+    num_games=100,
     max_steps=300
 ):
     """
@@ -269,7 +269,7 @@ def ejecutar_batch(
 if __name__ == "__main__":
 
     df_batch = ejecutar_batch(
-        num_games=10,
+        num_games=100,
         max_steps=300
     )
 
