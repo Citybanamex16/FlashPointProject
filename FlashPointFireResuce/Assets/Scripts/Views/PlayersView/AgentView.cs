@@ -10,6 +10,7 @@ public class AgentView : MonoBehaviour
 
     private Queue<IEnumerator> _actionQueue = new Queue<IEnumerator>();
     private bool _isAnimating = false;
+    public bool IsAnimating => _isAnimating || _actionQueue.Count > 0;
 
     public void SetInitialState(AgentDTO dto)
     {
