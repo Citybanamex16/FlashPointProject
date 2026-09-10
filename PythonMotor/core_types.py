@@ -36,12 +36,18 @@ class Puerta(Arista):
     def __init__(self):
         super().__init__(TipoArista.PUERTA)
         self.cerrado = True
+        self.destruida = False
 
     def abrir(self):
         self.cerrado = False
+
+    def cerrar(self):
+        if not self.destruida:
+            self.cerrado = True
         
     def destruir(self):
         self.cerrado = False # En el juego, una puerta destruida cuenta como espacio abierto
+        self.destruida = True
 
 class Muro(Arista):
     def __init__(self):
