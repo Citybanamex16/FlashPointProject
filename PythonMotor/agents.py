@@ -39,12 +39,31 @@ class Rescuer(Agent):
         self.posicion_anterior = None
         self.posicion_objetivo = None
         self.acciones_turno = []
+        self.eventos_turno = []
         self.estado = AgentStatus.ACTIVE
 
     def registrar_accion(self, accion, objetivo=None):
         self.accion_actual = accion
         self.posicion_objetivo = objetivo
         self.acciones_turno.append(accion)
+        self.eventos_turno.append({
+            "accion": accion.value,
+            "posicion": {
+                "x": self.pos[0],
+                "y": self.pos[1]
+            },
+            "posicion_objetivo": (
+                None
+                if objetivo is None
+                else {
+                    "x": objetivo[0],
+                    "y": objetivo[1]
+                }
+            ),
+            "ap": self.ap,
+            "llevando_victima": self.llevando_victima,
+            "estado": self.estado.name
+        })
         self.model._marcar_agente(self)
 
     def step(self):
@@ -69,6 +88,7 @@ class Rescuer(Agent):
         self.posicion_objetivo = None
         self.accion_actual = AgentAction.IDLE
         self.acciones_turno = []
+        self.eventos_turno = []
         self.ap = min(8, self.saved_ap + 4)
         self.saved_ap = 0
 

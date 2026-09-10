@@ -94,8 +94,20 @@ public class AgentDTO
     public PosDTO posicion_objetivo;
     public string accion;
     public List<string> acciones_turno;
+    public List<AgentActionEventDTO> eventos_turno;
     public int ap;
     public int ap_guardados;
+    public bool llevando_victima;
+    public string estado;
+}
+
+[Serializable]
+public class AgentActionEventDTO
+{
+    public string accion;
+    public PosDTO posicion;
+    public PosDTO posicion_objetivo;
+    public int ap;
     public bool llevando_victima;
     public string estado;
 }

@@ -603,27 +603,32 @@ class FlashPointModel(Model):
         }
 
 
-# === Funciones Auxiliares para Step DTO === #
+# ===Recoleccion de datos de Agente=== #
+
+
+    def posicion_a_dto(self,posicion):
+        if posicion is None:
+            return None
+        return {"x": posicion[0], "y": posicion[1]}
 
     def _agente_a_dto(self, agente):
-        def posicion_a_dto(posicion):
-            if posicion is None:
-                return None
-            return {"x": posicion[0], "y": posicion[1]}
-
         return {
             "id": agente.unique_id,
             "rol": agente.role.name,
-            "posicion": posicion_a_dto(agente.pos),
-            "posicion_anterior": posicion_a_dto(agente.posicion_anterior),
-            "posicion_objetivo": posicion_a_dto(agente.posicion_objetivo),
+            "posicion": self.posicion_a_dto(agente.pos),
+            "posicion_anterior": self.posicion_a_dto(agente.posicion_anterior),
+            "posicion_objetivo": self.posicion_a_dto(agente.posicion_objetivo),
             "accion": agente.accion_actual.value,
             "acciones_turno": [accion.value for accion in agente.acciones_turno],
+            "eventos_turno": agente.eventos_turno,
             "ap": agente.ap,
             "ap_guardados": agente.saved_ap,
             "llevando_victima": agente.llevando_victima,
             "estado": agente.estado.name
         }
+
+
+# === Funciones Auxiliares para Step DTO === #
     
     def _nodo_a_dto(self, nodo):
         poi_dto = None
@@ -641,6 +646,7 @@ class FlashPointModel(Model):
             "fuego": nodo.estado_fuego.name,
             "poi": poi_dto
         }
+
 
     def _arista_a_dto(self, key):
         arista = self.mapa_aristas[key]

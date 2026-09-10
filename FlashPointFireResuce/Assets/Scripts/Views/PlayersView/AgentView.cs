@@ -10,7 +10,6 @@ public class AgentView : MonoBehaviour
 
     private Queue<IEnumerator> _actionQueue = new Queue<IEnumerator>();
     private bool _isAnimating = false;
-    public bool IsAnimating => _isAnimating || _actionQueue.Count > 0;
 
     public void SetInitialState(AgentDTO dto)
     {
@@ -20,34 +19,44 @@ public class AgentView : MonoBehaviour
 
     public void UpdateState(AgentDTO dto)
     {
-        // Encolamos la animación según el tipo de acción recibida
-        switch (dto.accion)
+        if (dto.eventos_turno != null && dto.eventos_turno.Count > 0)
         {
-            case "MOVE":
-                if (dto.posicion_objetivo != null)
-                {
-                    Vector3 targetPos = GetWorldPosition(dto.posicion_objetivo.x, dto.posicion_objetivo.y);
-                    _actionQueue.Enqueue(AnimateMove(targetPos));
-                }
-                break;
-
-            case "BREAK_WALL":
-                _actionQueue.Enqueue(AnimateActionShake());
-                break;
-
-            case "PICK_UP_VICTIM":
-                _actionQueue.Enqueue(AnimatePickUp());
-                break;
-
-            case "EXTINGUISH": // Matar zombie / Infección
-                _actionQueue.Enqueue(AnimateAttack());
-                break;
+            foreach (var actionEvent in dto.eventos_turno)
+            {
+                EnqueueAction(actionEvent.accion, actionEvent.posicion_objetivo);
+            }
+        }
+        else
+        {
+            EnqueueAction(dto.accion, dto.posicion_objetivo);
         }
 
         // Si no está ejecutando animaciones, procesamos la cola
         if (!_isAnimating)
         {
             StartCoroutine(ProcessQueue());
+        }
+    }
+
+    private void EnqueueAction(string action, PosDTO target)
+    {
+        switch (action)
+        {
+            case "MOVE":
+                if (target != null)
+                {
+                    _actionQueue.Enqueue(AnimateMove(GetWorldPosition(target.x, target.y)));
+                }
+                break;
+            case "BREAK_WALL":
+                _actionQueue.Enqueue(AnimateActionShake());
+                break;
+            case "PICK_UP_VICTIM":
+                _actionQueue.Enqueue(AnimatePickUp());
+                break;
+            case "EXTINGUISH":
+                _actionQueue.Enqueue(AnimateAttack());
+                break;
         }
     }
 

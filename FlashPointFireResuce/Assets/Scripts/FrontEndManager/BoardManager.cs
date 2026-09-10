@@ -56,7 +56,7 @@ public class BoardManager : MonoBehaviour{
         // 4. Aplicamos los cambios si el modelo es válido
         if (stepDTO != null)
         {   
-            StartCoroutine(ApplyStepUpdatesRoutine(stepDTO));
+            ApplyStepUpdates(stepDTO);
         }
     }
 }
@@ -65,43 +65,42 @@ public class BoardManager : MonoBehaviour{
     /// <summary>
     /// Sincroniza la vista de Unity con los cambios del StepDTO de Python.
     /// </summary>
-    private IEnumerator ApplyStepUpdatesRoutine(StepDTO stepDTO){
-    // STEP 1: Animamos y movemos a los agentes PRIMERO
-    foreach (var agentData in stepDTO.agents)
-    {
-        if (_agentViews.TryGetValue(agentData.id, out AgentView agentView))
-        {
-            agentView.UpdateState(agentData);
+    private void ApplyStepUpdates(StepDTO stepDTO){
 
-            // ESPERA: Pausamos la ejecución hasta que el agente termine toda su cola de animación
-            while (agentView.IsAnimating)
+         // 1. Agentes (Actualización por ID)
+        foreach (var agentData in stepDTO.agents)
+        {
+            if (_agentViews.TryGetValue(agentData.id, out AgentView view))
             {
-                yield return null; // Espera al siguiente frame
+                print("Applying change on agent: " + view);
+                view.UpdateState(agentData);
             }
         }
-    }
 
-    // Pequeña pausa dramática para impacto visual
-    yield return new WaitForSeconds(0.15f);
 
-    // STEP 2: Actualizamos los NODOS (Fuego, Infección, Víctimas)
-    foreach (var nodeData in stepDTO.nodes)
-    {
-        Vector2Int key = new Vector2Int(nodeData.x, nodeData.y);
-        if (_nodeViews.TryGetValue(key, out NodeView view))
+        // 2. Actualizamos estado de casillas 
+        foreach (var nodeData in stepDTO.nodes)
         {
-            view.UpdateState(nodeData);
+            Vector2Int key = new Vector2Int(nodeData.x, nodeData.y);
+            //print("Trying to find node: " + key);
+            if (_nodeViews.TryGetValue(key, out NodeView view))
+            {
+                print("Applying change in key: " + key + " on node: " + view);
+                view.UpdateState(nodeData);
+            }
         }
-    }
 
-    // STEP 3: Actualizamos las ARISTAS (Muros rotos, Puertas)
-    foreach (var edgeData in stepDTO.edges)
-    {
-        string key = boardBuilder.GetEdgeKey(edgeData.posA.x, edgeData.posA.y, edgeData.posB.x, edgeData.posB.y);
-        if (_edgeViews.TryGetValue(key, out EdgeView view))
+        // 3. Actualizamos estado de aristas (salud de muros, estado de puertas)
+        foreach (var edgeData in stepDTO.edges)
         {
-            view.UpdateState(edgeData);
+            string key = boardBuilder.GetEdgeKey(edgeData.posA.x, edgeData.posA.y, edgeData.posB.x, edgeData.posB.y);
+            //print("Trying to find edge: " + key);
+            if (_edgeViews.TryGetValue(key, out EdgeView view))
+            {
+                print("Applying change in key: " + key + " on edge: " + view);
+                view.UpdateState(edgeData);
+            }
         }
+
     }
-}
 }
