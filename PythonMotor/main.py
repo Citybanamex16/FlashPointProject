@@ -8,17 +8,15 @@ from model import FlashPointModel
 app = Flask(__name__)
 CORS(app) 
 
-# 2. Instanciación del Modelo
-modelo = FlashPointModel(numAgents=0, width=10, height=8)
 
-# 3. Ruta de inicialiazacion
+# 2. Ruta de inicialiazacion
 @app.route('/api/init', methods=['GET']) 
 def GetSetupData():
     global modelo
-    modelo = FlashPointModel(numAgents=0, width=10, height=8)
+    modelo = FlashPointModel(numAgents=4, width=10, height=8)
     return jsonify(modelo.get_setup_dto()), 200
 
-# 4. Ruta de Step
+# 3. Ruta de Step
 @app.route('/api/step', methods=['GET'])
 def GetStepData():
     modelo.step()
