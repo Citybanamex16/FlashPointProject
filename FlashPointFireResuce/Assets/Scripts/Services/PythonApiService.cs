@@ -55,7 +55,7 @@ public class PythonApiService
             string jsonResponse = request.downloadHandler.text;
             
             // Imprimimos en consola para que veas el JSON real que mandó Python
-            Debug.Log($"⬇️ JSON RECIBIDO CON ÉXITO: {jsonResponse}");
+            //Debug.Log($"⬇️ JSON RECIBIDO CON ÉXITO: {jsonResponse}");
 
             // 4. Convertimos el JSON a tu clase de C#
             return JsonUtility.FromJson<StepDTO>(jsonResponse);

@@ -7,6 +7,15 @@ public class GameView : MonoBehaviour
 
     [Header("UI Elements")]
     [SerializeField] private TMP_Text statusText;
+    [SerializeField] private  Button initButton;
+
+
+    private void Awake(){
+        if(initButton != false){
+            initButton.gameObject.SetActive(false);
+        }
+    }
+
 
     public void SetLoadingState(bool isLoading,bool success)
     {
@@ -16,10 +25,15 @@ public class GameView : MonoBehaviour
         else{
             if(success){
                 statusText.text = "¡Ready!";
+                initButton.gameObject.SetActive(true);
             }
             else{
                 statusText.text = "Error, check log";
             }
         }
+    }
+
+    public void hideButton(){
+        initButton.gameObject.SetActive(false);
     }
 }

@@ -68,8 +68,10 @@ public class BoardManager : MonoBehaviour{
         foreach (var nodeData in stepDTO.nodes)
         {
             Vector2Int key = new Vector2Int(nodeData.x, nodeData.y);
+            //print("Trying to find node: " + key);
             if (_nodeViews.TryGetValue(key, out NodeView view))
             {
+                print("Applying change in key: " + key + " on node: " + view);
                 view.UpdateState(nodeData);
             }
         }
@@ -78,8 +80,10 @@ public class BoardManager : MonoBehaviour{
         foreach (var edgeData in stepDTO.edges)
         {
             string key = boardBuilder.GetEdgeKey(edgeData.posA.x, edgeData.posA.y, edgeData.posB.x, edgeData.posB.y);
+            //print("Trying to find edge: " + key);
             if (_edgeViews.TryGetValue(key, out EdgeView view))
             {
+                print("Applying change in key: " + key + " on edge: " + view);
                 view.UpdateState(edgeData);
             }
         }

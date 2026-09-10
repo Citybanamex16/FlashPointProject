@@ -22,7 +22,7 @@ public class CameraController : MonoBehaviour
         float centerZ = ((height - 1) * cellSize) / 2.0f;
 
         // 1. Inclinación deseada (ej. 60 grados hacia abajo)
-        float cameraAngleX = 120f; 
+        float cameraAngleX = 60f; 
         
         // 2. Posicionamos la cámara sobre el centro pero retrasada en Z para compensar la inclinación
         float heightY = 12f; 
