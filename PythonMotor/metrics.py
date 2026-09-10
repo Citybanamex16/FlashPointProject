@@ -150,7 +150,7 @@ def ejecutar_partida(
         random.seed(seed)
 
     model = MeasuredFlashPointModel(
-        numAgents=4,
+        numAgents=6,
         width=10,
         height=8,
     )

@@ -51,6 +51,8 @@ class FlashPointModel(Model):
             Role.SEARCHER,
             Role.SOLDIER,
             Role.SOLDIER,
+            Role.SOLDIER,
+            Role.SOLDIER,
             Role.SOLDIER            
         ]
         puertas_exteriores = [(3, 0), (6, 7), (0, 4), (9, 3)]
