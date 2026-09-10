@@ -957,6 +957,8 @@ MonoBehaviour:
   tile: {fileID: 5756213319518674706, guid: 40b36d4ac4714414f9f8bcb4ebd7d25a, type: 3}
   puerta: {fileID: 566831736560984298, guid: aef0259f157344ca1982b9b5e6eda843, type: 3}
   wall: {fileID: 1398103437225243394, guid: f117877da0fdd4a3985fa4afbae05aac, type: 3}
+  agentPrefab: {fileID: 1398103437225243394, guid: 3137a7286f3ac4d6aa7ef99ec59dfefa,
+    type: 3}
   MainCamara: {fileID: 330585548}
 --- !u!1 &1135229452
 GameObject:

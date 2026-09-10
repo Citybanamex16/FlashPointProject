@@ -13,6 +13,7 @@ public float cellSize = 10.0f;
 public GameObject tile;
 public GameObject puerta;
 public GameObject wall;
+public GameObject agentPrefab;
 
 [Header("Referencias")]
 public CameraController MainCamara;
@@ -21,16 +22,17 @@ private SetupDTO _lastSetupData;
 
 
 
-    public (Dictionary<Vector2Int, NodeView> nodesMap, Dictionary<string, EdgeView> edgesMap) BuildInitialMap(SetupDTO setupData){
-        _lastSetupData = setupData;
+    public (Dictionary<Vector2Int, NodeView> nodesMap, Dictionary<string, EdgeView> edgesMap, Dictionary<int, AgentView> agentsMap) BuildInitialMap(SetupDTO setupData){
+    _lastSetupData = setupData;
 
-        var nodesMap = ConstruirNodos(setupData);
-        var edgesMap = ConstruirAristas(setupData);
+    var nodesMap = ConstruirNodos(setupData);
+    var edgesMap = ConstruirAristas(setupData);
+    var agentsMap = ConstruirAgentes(setupData);
 
-        MainCamara.AdjustCameraToBoard(setupData.width, setupData.height, cellSize);
+    MainCamara.AdjustCameraToBoard(setupData.width, setupData.height, cellSize);
 
-        return (nodesMap, edgesMap);
-    }
+    return (nodesMap, edgesMap, agentsMap);
+}
 
 
     private Dictionary<Vector2Int, NodeView> ConstruirNodos(SetupDTO setupData)
@@ -84,6 +86,27 @@ private SetupDTO _lastSetupData;
         return edgeViews;
     }
 
+
+    private Dictionary<int, AgentView> ConstruirAgentes(SetupDTO setupData){
+    var agentViews = new Dictionary<int, AgentView>();
+
+    foreach (AgentDTO agentData in setupData.agents)
+    {
+        Vector3 position = GetWorldPosition(agentData.posicion.x, agentData.posicion.y);
+        GameObject agentGO = Instantiate(agentPrefab, position, Quaternion.identity, transform);
+        agentGO.name = $"Agent_{agentData.rol}_[{agentData.id}]";
+
+        AgentView agentView = agentGO.GetComponent<AgentView>();
+        if (agentView != null)
+        {
+            agentView.SetInitialState(agentData);
+            agentViews.Add(agentData.id, agentView);
+        }
+    }
+    return agentViews;
+}
+
+
     /// <summary>
     /// Helper para traducir coordenadas discretas (x,y) a posición flotante en Unity.
     /// </summary>
@@ -93,6 +116,9 @@ private SetupDTO _lastSetupData;
     }
 
     public string GetEdgeKey(int x1, int y1, int x2, int y2) => $"{x1},{y1}-{x2},{y2}";
+
+
+
 
 
 /// ===== Debug en Gizmos de inicializacion  basado en motor de dibujo de unity ===

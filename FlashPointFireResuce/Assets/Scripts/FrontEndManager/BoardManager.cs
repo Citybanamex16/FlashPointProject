@@ -16,6 +16,7 @@ public class BoardManager : MonoBehaviour{
     // Diccionarios de referencia a las Vistas de la escena
     private Dictionary<Vector2Int, NodeView> _nodeViews;
     private Dictionary<string, EdgeView> _edgeViews;
+    private Dictionary<int, AgentView> _agentViews;
 
     private void Awake()
     {
@@ -26,10 +27,11 @@ public class BoardManager : MonoBehaviour{
     /// Llamado por el GameMaster/GameController tras recibir el SetupDTO inicial.
     /// </summary>
 
-    public void InitializeSimulation(Dictionary<Vector2Int, NodeView> nodesMap, Dictionary<string, EdgeView> edgesMap){
+    public void InitializeSimulation(Dictionary<Vector2Int, NodeView> nodesMap, Dictionary<string, EdgeView> edgesMap,Dictionary<int, AgentView> agentsMap){
         print("Initializing Simulation");
         _nodeViews = nodesMap;
         _edgeViews = edgesMap;
+        _agentViews = agentsMap;
 
         // 2. Iniciamos el bucle de ticks HTTP
         if (autoStep)
@@ -64,7 +66,19 @@ public class BoardManager : MonoBehaviour{
     /// Sincroniza la vista de Unity con los cambios del StepDTO de Python.
     /// </summary>
     private void ApplyStepUpdates(StepDTO stepDTO){
-        // 1. Actualizamos estado de casillas 
+
+         // 1. Agentes (Actualización por ID)
+        foreach (var agentData in stepDTO.agents)
+        {
+            if (_agentViews.TryGetValue(agentData.id, out AgentView view))
+            {
+                print("Applying change on agent: " + view);
+                view.UpdateState(agentData);
+            }
+        }
+
+
+        // 2. Actualizamos estado de casillas 
         foreach (var nodeData in stepDTO.nodes)
         {
             Vector2Int key = new Vector2Int(nodeData.x, nodeData.y);
@@ -76,7 +90,7 @@ public class BoardManager : MonoBehaviour{
             }
         }
 
-        // 2. Actualizamos estado de aristas (salud de muros, estado de puertas)
+        // 3. Actualizamos estado de aristas (salud de muros, estado de puertas)
         foreach (var edgeData in stepDTO.edges)
         {
             string key = boardBuilder.GetEdgeKey(edgeData.posA.x, edgeData.posA.y, edgeData.posB.x, edgeData.posB.y);
@@ -87,5 +101,6 @@ public class BoardManager : MonoBehaviour{
                 view.UpdateState(edgeData);
             }
         }
+
     }
 }

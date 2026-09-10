@@ -4,7 +4,7 @@ using System.Text;
 using UnityEngine;
 
 // ==========================================
-// 1. ESTRUCTURAS AUXILIARES / PRIMITIVOS
+// ESTRUCTURAS AUXILIARES / PRIMITIVOS
 // ==========================================
 
 [Serializable]
@@ -26,7 +26,7 @@ public class PoiDTO
 }
 
 // ==========================================
-// 2. ELEMENTOS DEL TABLERO (NODOS Y ARISTAS)
+// ELEMENTOS DEL TABLERO (NODOS Y ARISTAS)
 // ==========================================
 
 [Serializable]
@@ -72,8 +72,36 @@ public class DiceRollDTO
     public override string ToString() => $"Dado X: {x}, Dado Y: {y}";
 }
 
+
+
+[Serializable]
+public class PosDTO
+{
+    public int x;
+    public int y;
+}
+
 // ==========================================
-// 3. EL DTO PRINCIPAL (SETUP)
+// DTO DE AGENTES
+// ==========================================
+[Serializable]
+public class AgentDTO
+{
+    public int id;
+    public string rol;
+    public PosDTO posicion;
+    public PosDTO posicion_anterior;
+    public PosDTO posicion_objetivo;
+    public string accion;
+    public List<string> acciones_turno;
+    public int ap;
+    public int ap_guardados;
+    public bool llevando_victima;
+    public string estado;
+}
+
+// ==========================================
+// DTO PRINCIPAL (SETUP)
 // ==========================================
 
 [Serializable]
@@ -83,6 +111,7 @@ public class SetupDTO
     public int height;
     public List<NodeDTO> nodes;
     public List<EdgeDTO> edges;
+    public List<AgentDTO> agents;
 
     /// <summary>
     /// Imprime en la Consola de Unity un resumen detallado y con formato del Setup.
@@ -136,7 +165,7 @@ public class SetupDTO
 
 
 // ==========================================
-// 4. DTO DE ACTUALIZACIÓN DEL TICK (STEP)
+// DTO DE ACTUALIZACIÓN DEL TICK (STEP)
 // ==========================================
 
 [Serializable]
@@ -152,6 +181,7 @@ public class StepDTO
     // Listas con los Deltas
     public List<NodeDTO> nodes;
     public List<EdgeDTO> edges;
+    public List<AgentDTO> agents;
 
     /// <summary>
     /// Imprime un resumen de los cambios procesados en el tick.
