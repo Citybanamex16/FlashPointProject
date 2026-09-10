@@ -1,3 +1,5 @@
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
 public class GameMaster : MonoBehaviour
@@ -10,9 +12,15 @@ public class GameMaster : MonoBehaviour
 
     private bool setupStarted = false;
 
+    private Dictionary<Vector2Int, NodeView> _nodesMapSafe;
+    private Dictionary<string, EdgeView> _edgesMapSafe;
+
     private void Awake()
     {
         _apiService = new PythonApiService();
+        _nodesMapSafe = new Dictionary<Vector2Int, NodeView>();
+        _edgesMapSafe = new Dictionary<string, EdgeView>();
+
     }
 
     private void Start(){
@@ -34,8 +42,11 @@ public class GameMaster : MonoBehaviour
         if (response != null)
         {
             var (nodesMap, edgesMap) = boardBuilder.BuildInitialMap(response);
+            _nodesMapSafe = nodesMap;
+            _edgesMapSafe = edgesMap;
+            
+
             setupStarted = true;
-            boardManager.InitializeSimulation(nodesMap,edgesMap);
 
         }
         else
@@ -46,6 +57,13 @@ public class GameMaster : MonoBehaviour
 
         view.SetLoadingState(false,setupStarted);
 
+    }
+
+
+    public void initSimulation(){
+        //Inicializa la simulacion y las llamadas a Step del python
+        view.hideButton();
+        boardManager.InitializeSimulation(_nodesMapSafe,_edgesMapSafe);
     }
 
 }

@@ -14,7 +14,8 @@ modelo = FlashPointModel(numAgents=0, width=10, height=8)
 # 3. Ruta de inicialiazacion
 @app.route('/api/init', methods=['GET']) 
 def GetSetupData():
-    # Devuelve el DTO con el estado completo del tablero a Unity
+    global modelo
+    modelo = FlashPointModel(numAgents=0, width=10, height=8)
     return jsonify(modelo.get_setup_dto()), 200
 
 # 4. Ruta de Step

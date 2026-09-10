@@ -19,7 +19,7 @@ public class Vector2DTO
 [Serializable]
 public class PoiDTO
 {
-    public string tipo;// "VICTIMA" o "FALSA_ALARMA"
+    public string tipo = "";// "VICTIMA" o "FALSA_ALARMA"
     public bool revelado;
 
     public override string ToString() => $"{tipo} (Revelado: {revelado})";
