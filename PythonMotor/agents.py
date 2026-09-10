@@ -88,7 +88,6 @@ class Rescuer(Agent):
         # Calcula el peso percibido para un nodo según la rol del agente
         peso_base = self._obtener_costo_real_nodo(nodo)
 
-        # Ajustes de peso según el rol y el estado del fuego
         if self.role == Role.SEARCHER and nodo.estado_fuego != EstadoFuego.LIMPIO:
             peso_base += 4.0  # Evita moverse hacia/atravesar peligros
         elif self.role == Role.SOLDIER and nodo.estado_fuego != EstadoFuego.LIMPIO:
@@ -115,11 +114,11 @@ class Rescuer(Agent):
         return [pos for pos in self.model.mapa_nodos.keys() if self._es_salida(pos)]
 
     def _encontrar_ruta_optima(self, destinos):
-        # Implementacion de Dijkstra para encontrar la ruta optima (basado en roles)
+        # Dijkstra con pesos percibidos según el rol
         if not destinos:
             return None, float('inf')
 
-        start = self.pos
+        start = origen if origen is not None else self.pos
         queue = [(0, start, [])]
         visited = set()
 
@@ -152,6 +151,10 @@ class Rescuer(Agent):
         for item in list(nodo_actual.contenido):
             if isinstance(item, POI):
                 item.revelado = True
+
+                if self.pos in self.model.pois_reclamados:
+                    del self.model.pois_reclamados[self.pos]
+
                 if item.tipo == TipoPOI.FALSA_ALARMA:
                     nodo_actual.contenido.remove(item)
                 elif item.tipo == TipoPOI.VICTIMA and not self.llevando_victima:
