@@ -8,6 +8,26 @@ class Role(Enum):
     WALLBREAKER = "Wallbreaker"
     SOLDIER = "Soldier"
 
+
+class AgentAction(Enum):
+    IDLE = "IDLE"
+    MOVE = "MOVE"
+    OPEN_DOOR = "OPEN_DOOR"
+    CLOSE_DOOR = "CLOSE_DOOR"
+    BREAK_WALL = "BREAK_WALL"
+    EXTINGUISH = "EXTINGUISH"
+    SEARCH = "SEARCH"
+    PICK_UP_VICTIM = "PICK_UP_VICTIM"
+    RESCUE_VICTIM = "RESCUE_VICTIM"
+    DROP_VICTIM = "DROP_VICTIM"
+    KNOCKED_DOWN = "KNOCKED_DOWN"
+
+
+class AgentStatus(Enum):
+    ACTIVE = "ACTIVE"
+    KNOCKED_DOWN = "KNOCKED_DOWN"
+
+
 class Rescuer(Agent):
     def __init__(self, model, role=Role.SEARCHER): 
         super().__init__(model) 
@@ -15,6 +35,17 @@ class Rescuer(Agent):
         self.ap = 4 
         self.saved_ap = 0  
         self.llevando_victima = False
+        self.accion_actual = AgentAction.IDLE
+        self.posicion_anterior = None
+        self.posicion_objetivo = None
+        self.acciones_turno = []
+        self.estado = AgentStatus.ACTIVE
+
+    def registrar_accion(self, accion, objetivo=None):
+        self.accion_actual = accion
+        self.posicion_objetivo = objetivo
+        self.acciones_turno.append(accion)
+        self.model._marcar_agente(self)
 
     def step(self):
         self._iniciar_turno()
@@ -34,6 +65,10 @@ class Rescuer(Agent):
         self._terminar_turno()
 
     def _iniciar_turno(self):
+        self.posicion_anterior = self.pos
+        self.posicion_objetivo = None
+        self.accion_actual = AgentAction.IDLE
+        self.acciones_turno = []
         self.ap = min(8, self.saved_ap + 4)
         self.saved_ap = 0
 
@@ -55,6 +90,7 @@ class Rescuer(Agent):
             poi_victima = POI(TipoPOI.VICTIMA)
             poi_victima.revelado = True
             nodo_actual.contenido.append(poi_victima)
+            self.registrar_accion(AgentAction.DROP_VICTIM, self.pos)
 
     def _obtener_costo_real_arista(self, arista):
         # Costo en AP para cruzar/destruir obstáculos
@@ -213,10 +249,12 @@ class Rescuer(Agent):
                 elif item.tipo == TipoPOI.VICTIMA and not self.llevando_victima:
                     nodo_actual.contenido.remove(item)
                     self.llevando_victima = True
+                    self.registrar_accion(AgentAction.PICK_UP_VICTIM, self.pos)
 
         if self.llevando_victima and self._es_salida(self.pos):
             self.llevando_victima = False
             self.model.victimas_salvadas += 1
+            self.registrar_accion(AgentAction.RESCUE_VICTIM, self.pos)
 
     def _avanzar_hacia(self, siguiente_pos):
         # Intenta moverse a un nodo adyacente
@@ -243,6 +281,7 @@ class Rescuer(Agent):
                 
             self.model.grid.move_agent(self, siguiente_pos)
             nodo_destino.contenido.append(self)
+            self.registrar_accion(AgentAction.MOVE, siguiente_pos)
             
             return True
 
@@ -257,7 +296,9 @@ class Rescuer(Agent):
             return False
 
         if self._gastar_ap(1):
+            accion = AgentAction.OPEN_DOOR if arista.cerrado else AgentAction.CLOSE_DOOR
             arista.abrir() if arista.cerrado else arista.cerrar()
+            self.registrar_accion(accion, siguiente_pos)
             return True
         return False
 
@@ -272,6 +313,7 @@ class Rescuer(Agent):
         if self._gastar_ap(2):
             arista.golpear()
             self.model.marcadores_dano -= 1
+            self.registrar_accion(AgentAction.BREAK_WALL, siguiente_pos)
             return True
         return False
 
@@ -297,12 +339,14 @@ class Rescuer(Agent):
         if nodo_objetivo.estado_fuego == EstadoFuego.HUMO:
             if self._gastar_ap(1):
                 nodo_objetivo.estado_fuego = EstadoFuego.LIMPIO
+                self.registrar_accion(AgentAction.EXTINGUISH, objetivo_pos)
                 return True
 
         if nodo_objetivo.estado_fuego == EstadoFuego.FUEGO:
             costo = 2 if completamente else 1
             if self._gastar_ap(costo):
                 nodo_objetivo.estado_fuego = EstadoFuego.LIMPIO if completamente else EstadoFuego.HUMO
+                self.registrar_accion(AgentAction.EXTINGUISH, objetivo_pos)
                 return True
 
         return False
