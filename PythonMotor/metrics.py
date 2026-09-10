@@ -2,6 +2,8 @@
 metrics.py - Medición y ejecución de múltiples partidas.
 """
 
+import random
+
 import pandas as pd
 from mesa.datacollection import DataCollector
 
@@ -134,10 +136,18 @@ class MeasuredFlashPointModel(FlashPointModel):
 # EJECUTAR UNA PARTIDA
 # ============================================================
 
-def ejecutar_partida(game_number, total_games, max_steps=300):
+def ejecutar_partida(
+    game_number,
+    total_games,
+    max_steps=300,
+    seed=None
+):
     """
     Ejecuta una partida completa y muestra su resultado.
     """
+
+    if seed is not None:
+        random.seed(seed)
 
     model = MeasuredFlashPointModel(
         numAgents=4,
@@ -180,8 +190,9 @@ def ejecutar_partida(game_number, total_games, max_steps=300):
 # ============================================================
 
 def ejecutar_batch(
-    num_games=100,
-    max_steps=300
+    num_games=1000,
+    max_steps=300,
+    base_seed=None
 ):
     """
     Ejecuta múltiples partidas y muestra estadísticas generales.
@@ -189,18 +200,25 @@ def ejecutar_batch(
 
     print("=" * 60)
     print(f"RUNNING {num_games} GAMES")
+    print(f"BASE SEED:  {base_seed}")
     print("=" * 60)
 
     modelos = []
 
     for game_number in range(1, num_games + 1):
+        game_seed = (
+            None
+            if base_seed is None
+            else base_seed + game_number - 1
+        )
         model = ejecutar_partida(
             game_number,
             num_games,
-            max_steps
+            max_steps,
+            seed=game_seed
         )
 
-        modelos.append(model)
+        modelos.append((game_seed, model))
 
     # --------------------------------------------------------
     # Crear DataFrame con resultados finales
@@ -208,8 +226,9 @@ def ejecutar_batch(
 
     resultados = []
 
-    for model in modelos:
+    for game_seed, model in modelos:
         resultados.append({
+            "Seed": game_seed,
             "Steps": model.steps,
             "DamageMarkers": model.marcadores_dano,
             "VictimsSaved": model.victimas_salvadas,
@@ -269,8 +288,9 @@ def ejecutar_batch(
 if __name__ == "__main__":
 
     df_batch = ejecutar_batch(
-        num_games=100,
-        max_steps=300
+        num_games=1000,
+        max_steps=300,
+        base_seed=20260910
     )
 
     print()

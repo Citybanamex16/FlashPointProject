@@ -92,16 +92,16 @@ class FlashPointModel(Model):
         for agent in self.agents:
             agent.step()
 
-        self._print("\n--- TURNO ---")
-        # 1. Turnos de los agentes
-        # 2. Fase de propagación del fuego
-        self.avanzar_fuego()
-        # 3. Resolver víctimas atrapadas y bomberos derribados
-        self._resolver_knockdowns()
-        # 4. Reponer POIs en el tablero
-        self._reponer_pois()
-        # 5. Evaluar condiciones de victoria/derrota
-        self.evaluar_estado_juego()
+            self._print("\n--- TURNO ---")
+            # 1. Turnos de los agentes
+            # 2. Fase de propagación del fuego
+            self.avanzar_fuego()
+            # 3. Resolver víctimas atrapadas y bomberos derribados
+            self._resolver_knockdowns()
+            # 4. Reponer POIs en el tablero
+            self._reponer_pois()
+            # 5. Evaluar condiciones de victoria/derrota
+            self.evaluar_estado_juego()
 
         if self.estado_juego != "EN_CURSO":
             self._print(f"[FIN] {self.estado_juego}")
@@ -327,7 +327,6 @@ class FlashPointModel(Model):
                         # 2. Remover del nodo en llamas y añadir a la ambulancia
                         nodo.contenido.remove(item)
                         nodo_amb.contenido.append(item)
-                        item.pos = ambulancia_destino
                         
                         # 3. Sincronizar el motor de Mesa
                         self.grid.move_agent(item, ambulancia_destino)

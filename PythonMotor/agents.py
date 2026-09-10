@@ -143,7 +143,7 @@ class Rescuer(Agent):
         if self.role == Role.SEARCHER and nodo.estado_fuego != EstadoFuego.LIMPIO:
             peso_base += 4.0
         elif self.role == Role.SOLDIER and nodo.estado_fuego != EstadoFuego.LIMPIO:
-            peso_base -= 0.5 
+            peso_base -= 2.0
 
         return max(1.0, peso_base)
 
@@ -154,6 +154,13 @@ class Rescuer(Agent):
         # Cuenta el número de celdas en estado FUEGO y compara con el umbral
         fuegos = sum(1 for n in self.model.mapa_nodos.values() if n.estado_fuego == EstadoFuego.FUEGO)
         return fuegos >= umbral
+
+    def _obtener_fuegos_activos(self):
+        return [
+            pos
+            for pos, nodo in self.model.mapa_nodos.items()
+            if nodo.estado_fuego == EstadoFuego.FUEGO
+        ]
 
     def _es_salida(self, pos):
         x, y = pos
@@ -353,7 +360,16 @@ class Rescuer(Agent):
 
     def _ejecutar_estado_search(self):
         # Estado SEARCH: Buscar POIs activos y extinguir amenazas si es necesario
-        if self._hay_fuego_critico(umbral=8) and self.role != Role.SEARCHER:
+        if self.role != Role.SEARCHER and self._extinguir_amenaza_adjacente():
+            return True
+
+        if self.role != Role.SEARCHER:
+            fuegos = self._obtener_fuegos_activos()
+            ruta_fuego, _ = self._encontrar_ruta_optima(fuegos)
+            if ruta_fuego and len(ruta_fuego) >= 2:
+                return self._avanzar_hacia(ruta_fuego[1])
+
+        if self._hay_fuego_critico(umbral=4):
             if self._extinguir_amenaza_adjacente():
                 return True
 
