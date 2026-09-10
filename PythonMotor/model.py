@@ -2,7 +2,7 @@ import random
 from mesa import Model
 from mesa.space import MultiGrid
 from core_types import EstadoFuego, TipoPOI, POI, Nodo, Muro, Puerta
-from agents import Rescuer, Role
+from agents import AgentAction, AgentStatus, Rescuer, Role
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 
@@ -16,6 +16,7 @@ class FlashPointModel(Model):
         # --- sets de objetos afectados durante step
         self.nodos_afectados = set()  # Almacena (x, y) como llave 
         self.aristas_afectadas = set() # Almacena (posA, posB) como llave 
+        self.agentes_afectados = set()
 
         # --- Tracker de POIs ---
         self.pois_reclamados = {}  
@@ -75,6 +76,9 @@ class FlashPointModel(Model):
         if hasattr(arista, 'key'):
             self.aristas_afectadas.add(arista.key)
 
+    def _marcar_agente(self, agente):
+        self.agentes_afectados.add(agente.unique_id)
+
 
     def step(self):
 
@@ -83,6 +87,7 @@ class FlashPointModel(Model):
 
         self.nodos_afectados.clear()
         self.aristas_afectadas.clear()
+        self.agentes_afectados.clear()
 
         for agent in self.agents:
             agent.step()
@@ -326,6 +331,12 @@ class FlashPointModel(Model):
                         
                         # 3. Sincronizar el motor de Mesa
                         self.grid.move_agent(item, ambulancia_destino)
+
+                        item.estado = AgentStatus.KNOCKED_DOWN
+                        item.registrar_accion(
+                            AgentAction.KNOCKED_DOWN,
+                            ambulancia_destino
+                        )
                         
                         self._marcar_nodo(nodo_amb)
                         self._marcar_nodo(nodo)
@@ -586,11 +597,32 @@ class FlashPointModel(Model):
             "width": self.grid.width,
             "height": self.grid.height,
             "nodes": self._exportar_nodos_dto(),
-            "edges": self._exportar_aristas_dto()
+            "edges": self._exportar_aristas_dto(),
+            "agents": [self._agente_a_dto(agent) for agent in self.agents]
         }
 
 
 # === Funciones Auxiliares para Step DTO === #
+
+    def _agente_a_dto(self, agente):
+        def posicion_a_dto(posicion):
+            if posicion is None:
+                return None
+            return {"x": posicion[0], "y": posicion[1]}
+
+        return {
+            "id": agente.unique_id,
+            "rol": agente.role.name,
+            "posicion": posicion_a_dto(agente.pos),
+            "posicion_anterior": posicion_a_dto(agente.posicion_anterior),
+            "posicion_objetivo": posicion_a_dto(agente.posicion_objetivo),
+            "accion": agente.accion_actual.value,
+            "acciones_turno": [accion.value for accion in agente.acciones_turno],
+            "ap": agente.ap,
+            "ap_guardados": agente.saved_ap,
+            "llevando_victima": agente.llevando_victima,
+            "estado": agente.estado.name
+        }
     
     def _nodo_a_dto(self, nodo):
         poi_dto = None
@@ -636,7 +668,12 @@ class FlashPointModel(Model):
 
                 # Solo enviamos la transformación a DTO de los elementos que cambiaron
                 "nodes": [self._nodo_a_dto(self.mapa_nodos[pos]) for pos in self.nodos_afectados],
-                "edges": [self._arista_a_dto(key) for key in self.aristas_afectadas]
+                "edges": [self._arista_a_dto(key) for key in self.aristas_afectadas],
+                "agents": [
+                    self._agente_a_dto(agent)
+                    for agent in self.agents
+                    if agent.unique_id in self.agentes_afectados
+                ]
             }
 
     def visualizar_matplot(self, figsize=(10, 8)):
