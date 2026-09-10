@@ -17,6 +17,9 @@ class FlashPointModel(Model):
         self.nodos_afectados = set()  # Almacena (x, y) como llave 
         self.aristas_afectadas = set() # Almacena (posA, posB) como llave 
 
+        # --- Tracker de POIs ---
+        self.pois_reclamados = {}  
+
         # --- Trackers globales y estado de la partida ---
         self.victimas_salvadas = 0
         self.victimas_perdidas = 0
