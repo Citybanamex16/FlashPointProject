@@ -142,8 +142,11 @@ class Rescuer(Agent):
 
         if self.role == Role.SEARCHER and nodo.estado_fuego != EstadoFuego.LIMPIO:
             peso_base += 4.0
-        elif self.role == Role.SOLDIER and nodo.estado_fuego != EstadoFuego.LIMPIO:
-            peso_base -= 2.0
+        elif self.role == Role.SOLDIER:
+            if nodo.estado_fuego == EstadoFuego.FUEGO:
+                return 0.5
+            if nodo.estado_fuego == EstadoFuego.HUMO:
+                return 0.75
 
         return max(1.0, peso_base)
 
@@ -360,10 +363,10 @@ class Rescuer(Agent):
 
     def _ejecutar_estado_search(self):
         # Estado SEARCH: Buscar POIs activos y extinguir amenazas si es necesario
-        if self.role != Role.SEARCHER and self._extinguir_amenaza_adjacente():
-            return True
-
         if self.role != Role.SEARCHER:
+            if self._extinguir_amenaza_adjacente():
+                return True
+
             fuegos = self._obtener_fuegos_activos()
             ruta_fuego, _ = self._encontrar_ruta_optima(fuegos)
             if ruta_fuego and len(ruta_fuego) >= 2:
@@ -372,9 +375,6 @@ class Rescuer(Agent):
         if self._hay_fuego_critico(umbral=4):
             if self._extinguir_amenaza_adjacente():
                 return True
-
-        if self.role == Role.SOLDIER and self._extinguir_amenaza_adjacente():
-            return True
 
         poi_objetivo = self._seleccionar_mejor_poi()
         if not poi_objetivo:
@@ -406,7 +406,7 @@ class Rescuer(Agent):
 
     def _extinguir_amenaza_adjacente(self):
         # Revisa primero la celda actual y luego las vecinas accesibles
-        if self.extinguir():
+        if self._extinguir_objetivo(self.pos):
             return True
 
         nodo_actual = self.model.mapa_nodos[self.pos]
@@ -416,7 +416,16 @@ class Rescuer(Agent):
             if isinstance(arista, Puerta) and arista.cerrado:
                 continue
 
-            if self.extinguir(nodo_vecino.pos):
+            if self._extinguir_objetivo(nodo_vecino.pos):
                 return True
 
         return False
+
+    def _extinguir_objetivo(self, objetivo_pos):
+        nodo_objetivo = self.model.mapa_nodos[objetivo_pos]
+        completamente = (
+            self.role == Role.SOLDIER
+            and nodo_objetivo.estado_fuego == EstadoFuego.FUEGO
+            and self.ap >= 2
+        )
+        return self.extinguir(objetivo_pos, completamente=completamente)

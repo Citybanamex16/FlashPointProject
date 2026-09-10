@@ -49,7 +49,9 @@ class FlashPointModel(Model):
         # 5. Instanciar y colocar agentes en las 4 puertas exteriores
         roles_disponibles = [
             Role.SEARCHER,
-            Role.SOLDIER
+            Role.SOLDIER,
+            Role.SOLDIER,
+            Role.SOLDIER            
         ]
         puertas_exteriores = [(3, 0), (6, 7), (0, 4), (9, 3)]
 
