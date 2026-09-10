@@ -117,7 +117,7 @@ class Rescuer(Agent):
         if not destinos:
             return None, float('inf')
 
-        start = self.pos
+        start = origen if origen is not None else self.pos
         queue = [(0, start, [])]
         visited = set()
 
@@ -149,6 +149,10 @@ class Rescuer(Agent):
         for item in list(nodo_actual.contenido):
             if isinstance(item, POI):
                 item.revelado = True
+
+                if self.pos in self.model.pois_reclamados:
+                    del self.model.pois_reclamados[self.pos]
+
                 if item.tipo == TipoPOI.FALSA_ALARMA:
                     nodo_actual.contenido.remove(item)
                 elif item.tipo == TipoPOI.VICTIMA and not self.llevando_victima:
