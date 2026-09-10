@@ -53,7 +53,7 @@ public class BoardManager : MonoBehaviour{
 
         // 4. Aplicamos los cambios si el modelo es válido
         if (stepDTO != null)
-        {
+        {   
             ApplyStepUpdates(stepDTO);
         }
     }

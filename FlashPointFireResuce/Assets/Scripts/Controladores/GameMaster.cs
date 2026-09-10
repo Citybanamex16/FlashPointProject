@@ -15,7 +15,6 @@ public class GameMaster : MonoBehaviour
         _apiService = new PythonApiService();
     }
 
-
     private void Start(){
 
         InitMap();
