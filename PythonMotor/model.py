@@ -28,13 +28,17 @@ class FlashPointModel(Model):
         self._fig = None
         self._ax = None
 
-        self.mapa_nodos = {}
+        self.mapa_nodos = {} # Llave: ((x1, y1), (x2, y2)) -> Valor: Objeto Nodo
+        self.mapa_aristas = {} # Llave: ((x1, y1), (x2, y2)) -> Valor: Objeto Arista
+
+
         for x in range(width):
             for y in range(height):
                 nodo = Nodo(pos=(x, y))
                 self.mapa_nodos[(x, y)] = nodo
 
         self._conectar_vecinos_base(width, height)
+        # Crear mapa de 
         self._cargar_infraestructura_tablero()
         self._preparar_juego_familiar()
 
@@ -65,7 +69,8 @@ class FlashPointModel(Model):
         self.nodos_afectados.add(nodo.pos)
 
     def _marcar_arista(self, arista):
-        self.aristas_afectadas.add(arista.get_key())
+        if hasattr(arista, 'key'):
+            self.aristas_afectadas.add(arista.key)
 
 
     def step(self):
@@ -79,20 +84,20 @@ class FlashPointModel(Model):
         for agent in self.agents:
             agent.step()
 
-            self._print("\n--- TURNO ---")
-            # 1. Turnos de los agentes
-            # 2. Fase de propagación del fuego
-            self.avanzar_fuego()
-            # 3. Resolver víctimas atrapadas y bomberos derribados
-            self._resolver_knockdowns()
-            # 4. Reponer POIs en el tablero
-            self._reponer_pois()
-            # 5. Evaluar condiciones de victoria/derrota
-            self.evaluar_estado_juego()
+        self._print("\n--- TURNO ---")
+        # 1. Turnos de los agentes
+        # 2. Fase de propagación del fuego
+        self.avanzar_fuego()
+        # 3. Resolver víctimas atrapadas y bomberos derribados
+        self._resolver_knockdowns()
+        # 4. Reponer POIs en el tablero
+        self._reponer_pois()
+        # 5. Evaluar condiciones de victoria/derrota
+        self.evaluar_estado_juego()
 
-            if self.estado_juego != "EN_CURSO":
-                self._print(f"[FIN] {self.estado_juego}")
-                return
+        if self.estado_juego != "EN_CURSO":
+            self._print(f"[FIN] {self.estado_juego}")
+            return
             
             
     def evaluar_estado_juego(self):
@@ -217,7 +222,7 @@ class FlashPointModel(Model):
             if isinstance(arista, Muro) and arista.hp > 0:
                 arista.golpear()
                 self.marcadores_dano -= 1
-                 self._marcar_arista(arista)
+                self._marcar_arista(arista)
                 self._print(
                     f"[MURO] {nodo_actual.pos}->{siguiente_pos} "
                     f"HP={arista.hp} D={self.marcadores_dano}"
@@ -404,6 +409,11 @@ class FlashPointModel(Model):
         nodo_a.vecinos[nodo_b] = objeto_arista
         nodo_b.vecinos[nodo_a] = objeto_arista
 
+        # === MODELO SE ENTERA DE LA RELACION ===
+        key = (pos_a, pos_b)
+        objeto_arista.key = key # Inyectamos la clave al objeto
+        self.mapa_aristas[key] = objeto_arista
+
     def _cargar_infraestructura_tablero(self):
         lista_muros = [
             ((0, 1), (1, 1)),
@@ -575,6 +585,56 @@ class FlashPointModel(Model):
             "nodes": self._exportar_nodos_dto(),
             "edges": self._exportar_aristas_dto()
         }
+
+
+# === Funciones Auxiliares para Step DTO === #
+    
+    def _nodo_a_dto(self, nodo):
+        poi_dto = None
+        for item in nodo.contenido:
+            if isinstance(item, POI):
+                poi_dto = {
+                    "tipo": item.tipo.name,
+                    "revelado": item.revelado
+                }
+                break
+
+        return {
+            "x": nodo.pos[0],
+            "y": nodo.pos[1],
+            "fuego": nodo.estado_fuego.name,
+            "poi": poi_dto
+        }
+
+    def _arista_a_dto(self, key):
+        arista = self.mapa_aristas[key]
+        pos_a, pos_b = key
+
+        dto = {
+            "posA": {"x": pos_a[0], "y": pos_a[1]},
+            "posB": {"x": pos_b[0], "y": pos_b[1]},
+            "tipo": arista.tipo.name
+        }
+
+        if isinstance(arista, Puerta):
+            dto["cerrado"] = arista.cerrado
+        elif isinstance(arista, Muro):
+            dto["hp"] = arista.hp
+
+        return dto
+
+    def get_step_dto(self, target_x=None, target_y=None):
+        return {
+                "estado_juego": self.estado_juego,
+                "marcadores_dano": self.marcadores_dano,
+                "victimas_salvadas": self.victimas_salvadas,
+                "victimas_perdidas": self.victimas_perdidas,
+                "tirada_dados": {"x": target_x, "y": target_y},
+
+                # Solo enviamos la transformación a DTO de los elementos que cambiaron
+                "nodes": [self._nodo_a_dto(self.mapa_nodos[pos]) for pos in self.nodos_afectados],
+                "edges": [self._arista_a_dto(key) for key in self.aristas_afectadas]
+            }
 
     def visualizar_matplot(self, figsize=(10, 8)):
         if self._fig is None or not plt.fignum_exists(self._fig.number):

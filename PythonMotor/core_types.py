@@ -28,9 +28,11 @@ class Nodo():
         self.contenido = [] # Lista para almacenar Firefighters, POIs, etc.
         self.vecinos = {} # Diccionario de vecinos {Nodo: Arista}
 
+# Clase abstracta
 class Arista():
     def __init__(self, tipo):
-        self.tipo = tipo 
+        self.tipo = tipo
+        self.key = None
 
 class Puerta(Arista):
     def __init__(self):

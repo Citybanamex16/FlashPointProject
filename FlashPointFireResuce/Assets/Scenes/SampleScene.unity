@@ -991,7 +991,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 50939ba7888454097a95a71c3678be8f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  stepDelay: 2
+  stepDelay: 1
   autoStep: 1
   boardBuilder: {fileID: 1038133543}
 --- !u!1 &1232864632

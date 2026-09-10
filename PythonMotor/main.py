@@ -20,6 +20,7 @@ def GetSetupData():
 # 4. Ruta de Step
 @app.route('/api/step', methods=['GET'])
 def GetStepData():
+    modelo.step()
     return jsonify(modelo.get_step_dto()), 200
 
 
