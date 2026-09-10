@@ -21,8 +21,7 @@ private SetupDTO _lastSetupData;
 
 
 
-    public (Dictionary<Vector2Int, NodeView> nodesMap, Dictionary<string, EdgeView> edgesMap) BuildInitialMap(SetupDTO setupData)
-    {
+    public (Dictionary<Vector2Int, NodeView> nodesMap, Dictionary<string, EdgeView> edgesMap) BuildInitialMap(SetupDTO setupData){
         _lastSetupData = setupData;
 
         var nodesMap = ConstruirNodos(setupData);
@@ -64,7 +63,7 @@ private SetupDTO _lastSetupData;
             Vector3 posA = GetWorldPosition(edgeData.posA.x, edgeData.posA.y);
             Vector3 posB = GetWorldPosition(edgeData.posB.x, edgeData.posB.y);
             Vector3 middlePosition = (posA + posB) / 2.0f;
-            
+
             bool esMuroVertical = edgeData.posA.x != edgeData.posB.x;
             Quaternion rotation = esMuroVertical ? Quaternion.Euler(0, 90f, 0) : Quaternion.identity;
 

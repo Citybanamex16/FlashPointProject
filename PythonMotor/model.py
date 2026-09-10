@@ -11,6 +11,10 @@ class FlashPointModel(Model):
         self.grid = MultiGrid(width, height, torus=False)  # grid de vectores 2D
         self.bolsa_poi = []
 
+        # --- sets de objetos afectados durante step
+        self.nodos_afectados = set()  # Almacena (x, y) como llave 
+        self.aristas_afectadas = set() # Almacena (posA, posB) como llave 
+
         # --- Trackers globales y estado de la partida ---
         self.victimas_salvadas = 0     # 7 para ganar
         self.victimas_perdidas = 0     # 4 para perder
@@ -34,7 +38,20 @@ class FlashPointModel(Model):
         # 4. Preparar el setup de la partida familiar
         self._preparar_juego_familiar()
 
+    # -- funciones para añadir un nodo/arista a la lista de afectados -- #
+    def _marcar_nodo_modificado(self, nodo):
+        self.nodos_afectados.add(nodo.pos)
+
+    def _marcar_arista_modificada(self, arista):
+        self.aristas_afectadas.add(arista.get_key())
+
     def step(self):
+
+        # -- Limpiamos los conjuntos al iniciar el step --- #
+        # -- SUPER MACRO IMPORTANTE -- #
+        self.nodos_afectados.clear()
+        self.aristas_afectadas.clear()
+
         if self.estado_juego != "EN_CURSO":
             return
 
@@ -63,17 +80,20 @@ class FlashPointModel(Model):
                     if isinstance(item, POI) and item.tipo == TipoPOI.VICTIMA:
                         nodo.contenido.remove(item)
                         self.victimas_perdidas += 1
+                        self._marcar_nodo(nodo)
 
                     # Bombero derribado: se teletransporta a la ambulancia
                     elif type(item).__name__ == "Firefighter":
                         nodo.contenido.remove(item)
                         self.mapa_nodos[(0, 0)].contenido.append(item)
                         item.pos = (0, 0)
+                        self._marcar_nodo(nodo)
 
                         # Si llevaba una víctima, esta muere al instante
                         if getattr(item, 'llevando_victima', False):
                             item.llevando_victima = False
                             self.victimas_perdidas += 1
+                            self._marcar_nodo(nodo)
 
     def _reponer_pois(self):
         # Cuenta los POIs activos (sin revelar o víctimas reveladas) en el tablero
@@ -101,12 +121,15 @@ class FlashPointModel(Model):
             nodo_objetivo.contenido.append(nuevo_poi)
             pois_activos += 1
 
+
             # Revelación instantánea si el POI cae sobre un bombero
             if any(type(c).__name__ == "Firefighter" for c in nodo_objetivo.contenido):
                 nuevo_poi.revelado = True
                 if nuevo_poi.tipo == TipoPOI.FALSA_ALARMA:
                     nodo_objetivo.contenido.remove(nuevo_poi)
                     pois_activos -= 1  # obliga a repetir el ciclo y sacar otro
+
+            self._marcar_nodo(nodo_objetivo)
 
     def evaluar_estado_juego(self):
         # Condición de victoria
@@ -132,15 +155,18 @@ class FlashPointModel(Model):
         # 2. Lógica de ignición según el estado actual del espacio
         if nodo_objetivo.estado_fuego == EstadoFuego.LIMPIO:
             nodo_objetivo.estado_fuego = EstadoFuego.HUMO
+            self._marcar_nodo(nodo_objetivo)
 
         elif nodo_objetivo.estado_fuego == EstadoFuego.HUMO:
             nodo_objetivo.estado_fuego = EstadoFuego.FUEGO
+            self._marcar_nodo(nodo_objetivo)
 
         elif nodo_objetivo.estado_fuego == EstadoFuego.FUEGO:
             self._resolver_explosion(nodo_objetivo)
 
         # 3. Resolver flashovers después de la ignición
         self._resolver_flashovers()
+
 
     def _proyectar_onda_choque(self, nodo_actual, dx, dy):
         # Propaga la onda de choque de una explosión en línea recta
@@ -158,18 +184,22 @@ class FlashPointModel(Model):
             if isinstance(arista, Muro) and arista.hp > 0:
                 arista.golpear()
                 self.marcadores_dano -= 1
+                self._marcar_arista(arista)
                 break  # la onda es absorbida por el muro
 
             if isinstance(arista, Puerta):
                 if arista.cerrado:
                     arista.destruir()
+                    self._marcar_arista(arista)
                     break  # la onda es absorbida por la puerta cerrada
                 else:
                     arista.destruir()
+                    self._marcar_arista(arista)
 
             # 2. Ignición por la onda
             if nodo_siguiente.estado_fuego in [EstadoFuego.LIMPIO, EstadoFuego.HUMO]:
                 nodo_siguiente.estado_fuego = EstadoFuego.FUEGO
+                self._marcar_nodo(nodo_siguiente)
                 break  # se detiene tras encender un espacio limpio o con humo
 
             # Si el espacio ya está en fuego, la onda sigue en la misma dirección
@@ -187,18 +217,22 @@ class FlashPointModel(Model):
             if isinstance(arista, Muro) and arista.hp > 0:
                 arista.golpear()
                 self.marcadores_dano -= 1
+                self._marcar_arista(arista)
                 continue  # la explosión se detiene tras dañar el muro
 
             if isinstance(arista, Puerta):
                 if arista.cerrado:
                     arista.destruir()
+                    self._marcar_arista(arista)
                     continue  # se detiene tras destruir la puerta cerrada
                 else:
                     arista.destruir()  # pasa por la puerta abierta pero la destruye
+                    self._marcar_arista(arista)
 
             # 2. Ignición del espacio vecino
             if nodo_vecino.estado_fuego in [EstadoFuego.LIMPIO, EstadoFuego.HUMO]:
                 nodo_vecino.estado_fuego = EstadoFuego.FUEGO
+                self._marcar_nodo(nodo_vecino)
                 continue  # se detiene tras encender el espacio
 
             # 3. Si el vecino ya está en fuego, se dispara la onda de choque
@@ -225,6 +259,7 @@ class FlashPointModel(Model):
                         if not bloqueado and vecino.estado_fuego == EstadoFuego.FUEGO:
                             nodo.estado_fuego = EstadoFuego.FUEGO
                             flashover_ocurrido = True
+                            self._marcar_nodo(nodo)
                             break  # nodo actualizado, se pasa al siguiente
 
     def _conectar_vecinos_base(self, width, height):
@@ -287,6 +322,7 @@ class FlashPointModel(Model):
                 tipo_poi = self.bolsa_poi.pop()
                 self.mapa_nodos[pos].contenido.append(POI(tipo_poi))
 
+    
     # ==== Sistema de DTO Python -> Unity ==== #
     def _exportar_nodos_dto(self):
         # Serializa cada nodo (posición, estado de fuego y POI si tiene) a dict
@@ -341,6 +377,7 @@ class FlashPointModel(Model):
 
         return aristas_lista
 
+
     def get_setup_dto(self):
         # Punto de entrada para exportar el estado inicial del tablero a Unity
         return {
@@ -350,13 +387,21 @@ class FlashPointModel(Model):
             "edges": self._exportar_aristas_dto()
         }
 
-    def get_step_dto(self):
+    def get_step_dto(self, target_x=None, target_y=None):
+        return {
+                "estado_juego": self.estado_juego,
+                "marcadores_dano": self.marcadores_dano,
+                "victimas_salvadas": self.victimas_salvadas,
+                "victimas_perdidas": self.victimas_perdidas,
+                "tirada_dados": {"x": target_x, "y": target_y},
 
-        return{
-        "nodes":self,
-        "edges":self,
-        
-        }
+                # Solo enviamos la transformación a DTO de los elementos que cambiaron
+                "nodes": [self.mapa_nodos[pos].to_dto() for pos in self.nodos_afectados],
+                "edges": [self.mapa_aristas[key].to_dto() for key in self.aristas_afectadas]
+            }
+
+
+
 
     ## === Visualización DEBUG === ##
     def imprimir_tablero_debug(self):
@@ -402,6 +447,8 @@ class FlashPointModel(Model):
         eje_x = "  " + "".join(f"  {x}  " for x in range(self.grid.width))
         print(eje_x + "\n")
 
+
+
     def _simbolo_borde_horizontal(self, borde):
         if borde is None: return "     "
         if isinstance(borde, Muro):
@@ -412,6 +459,8 @@ class FlashPointModel(Model):
             return "  D  " if borde.cerrado else "  d  "
         return "     "
 
+
+
     def _simbolo_borde_vertical(self, borde):
         if borde is None: return " "
         if isinstance(borde, Muro):
@@ -421,6 +470,8 @@ class FlashPointModel(Model):
         if isinstance(borde, Puerta):
             return "D" if borde.cerrado else "d"
         return " "
+
+
 
     # otra visualización debug, pero más clara (con matplotlib)
     def visualizar_matplot(self, figsize=(10, 8)):

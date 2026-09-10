@@ -946,6 +946,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   view: {fileID: 1232864634}
   boardBuilder: {fileID: 1038133543}
+  boardManager: {fileID: 1154865924}
 --- !u!1 &1154865922
 GameObject:
   m_ObjectHideFlags: 0
@@ -955,6 +956,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1154865923}
+  - component: {fileID: 1154865924}
   m_Layer: 0
   m_Name: BoardManager
   m_TagString: Untagged
@@ -977,6 +979,21 @@ Transform:
   m_Children: []
   m_Father: {fileID: 1298741555}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1154865924
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1154865922}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 50939ba7888454097a95a71c3678be8f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  stepDelay: 2
+  autoStep: 1
+  boardBuilder: {fileID: 1038133543}
 --- !u!1 &1232864632
 GameObject:
   m_ObjectHideFlags: 0

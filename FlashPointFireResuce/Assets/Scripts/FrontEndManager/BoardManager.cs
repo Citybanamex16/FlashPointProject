@@ -1,19 +1,26 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using System.Threading.Tasks;
+
 
 public class BoardManager : MonoBehaviour{
 
-    [Header("Referencias de Componentes")]
-    [SerializeField] private PythonApiService apiService;
+    private PythonApiService apiService;
 
     [Header("Configuración de Simulación")]
-    [SerializeField] public float stepDelay = 2.0f;
-    [SerializeField] public bool autoStep = true;
+    public float stepDelay = 2.0f;
+    public bool autoStep = true;
+    public BoardBuilder boardBuilder;
 
     // Diccionarios de referencia a las Vistas de la escena
     private Dictionary<Vector2Int, NodeView> _nodeViews;
     private Dictionary<string, EdgeView> _edgeViews;
+
+    private void Awake()
+    {
+        apiService = new PythonApiService();
+    }
 
     /// <summary>
     /// Llamado por el GameMaster/GameController tras recibir el SetupDTO inicial.
@@ -31,27 +38,32 @@ public class BoardManager : MonoBehaviour{
         }
     }
 
-    private IEnumerator SimulationLoop(){
-        while (autoStep)
-        {
-            yield return new WaitForSeconds(stepDelay);
+   private IEnumerator SimulationLoop(){
+    while (autoStep){
+        yield return new WaitForSeconds(stepDelay);
 
-            // Petición HTTP asíncrona hacia Python para procesar el paso
-            yield return apiService.RequestStepDTO((stepDTO) => 
-            {
-                if (stepDTO != null)
-                {
-                    ApplyStepUpdates(stepDTO);
-                }
-            });
+        // 1. Creamos la tarea de la API
+        Task<StepDTO> apiTask = apiService.requestStepDTO();
+
+        // 2. Le decimos a la corrutina que espere a que la tarea termine
+        yield return new WaitUntil(() => apiTask.IsCompleted);
+
+        // 3. Cuando llega aquí, la tarea ya terminó. Obtenemos el resultado.
+        StepDTO stepDTO = apiTask.Result;
+
+        // 4. Aplicamos los cambios si el modelo es válido
+        if (stepDTO != null)
+        {
+            ApplyStepUpdates(stepDTO);
         }
     }
+}
+
 
     /// <summary>
     /// Sincroniza la vista de Unity con los cambios del StepDTO de Python.
     /// </summary>
-    private void ApplyStepUpdates(SetupDTO stepDTO)
-    {
+    private void ApplyStepUpdates(StepDTO stepDTO){
         // 1. Actualizamos estado de casillas 
         foreach (var nodeData in stepDTO.nodes)
         {

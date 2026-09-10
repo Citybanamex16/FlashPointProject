@@ -27,13 +27,10 @@ public class GameMaster : MonoBehaviour
     async private void InitMap(){
 
         //1. Activamos Spinner
-        view.SetLoadingState(true);
+        view.SetLoadingState(true,setupStarted);
 
         //2. Solicitamos servicio de red 
         SetupDTO response = await _apiService.requestSetupDTO();
-
-        //3. Quitamos el spinner y evaluamos Inicializacion
-        view.SetLoadingState(false);
 
         if (response != null)
         {
@@ -48,7 +45,7 @@ public class GameMaster : MonoBehaviour
             setupStarted = false;
         }
 
-        view.SetLoadingState(false);
+        view.SetLoadingState(false,setupStarted);
 
     }
 

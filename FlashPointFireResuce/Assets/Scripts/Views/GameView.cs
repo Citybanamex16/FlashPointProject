@@ -8,13 +8,18 @@ public class GameView : MonoBehaviour
     [Header("UI Elements")]
     [SerializeField] private TMP_Text statusText;
 
-    public void SetLoadingState(bool isLoading)
+    public void SetLoadingState(bool isLoading,bool success)
     {
         if(isLoading){
             statusText.text = "Loading...";
         }
         else{
-            statusText.text = "¡Ready!";
+            if(success){
+                statusText.text = "¡Ready!";
+            }
+            else{
+                statusText.text = "Error, check log";
+            }
         }
     }
 }

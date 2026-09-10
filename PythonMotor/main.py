@@ -10,11 +10,17 @@ CORS(app)
 # 2. Instanciación del Modelo
 modelo = FlashPointModel(numAgents=0, width=10, height=8)
 
-# 3. Definición de la Ruta / Endpoint (Esto es un Decor)
-@app.route('/api/process', methods=['GET']) 
+# 3. Ruta de inicialiazacion
+@app.route('/api/init', methods=['GET']) 
 def GetSetupData():
     # Devuelve el DTO con el estado completo del tablero a Unity
     return jsonify(modelo.get_setup_dto()), 200
+
+# 4. Ruta de Step
+@app.route('/api/step', methods=['GET'])
+def GetStepData():
+    return jsonify(modelo.get_step_dto()), 200
+
 
 if __name__ == '__main__':
 
