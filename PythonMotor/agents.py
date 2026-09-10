@@ -363,16 +363,7 @@ class Rescuer(Agent):
 
     def _ejecutar_estado_search(self):
         # Estado SEARCH: Buscar POIs activos y extinguir amenazas si es necesario
-        if self.role != Role.SEARCHER and self._extinguir_amenaza_adjacente():
-            return True
-
         if self.role != Role.SEARCHER:
-            fuegos = self._obtener_fuegos_activos()
-            ruta_fuego, _ = self._encontrar_ruta_optima(fuegos)
-            if ruta_fuego and len(ruta_fuego) >= 2:
-                return self._avanzar_hacia(ruta_fuego[1])
-
-        if self._hay_fuego_critico(umbral=4):
             if self._extinguir_amenaza_adjacente():
                 return True
 

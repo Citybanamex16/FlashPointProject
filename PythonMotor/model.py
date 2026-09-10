@@ -51,8 +51,6 @@ class FlashPointModel(Model):
             Role.SEARCHER,
             Role.SOLDIER,
             Role.SOLDIER,
-            Role.SOLDIER,
-            Role.SOLDIER,
             Role.SOLDIER            
         ]
         puertas_exteriores = [(3, 0), (6, 7), (0, 4), (9, 3)]
@@ -605,21 +603,20 @@ class FlashPointModel(Model):
         }
 
 
-# ===Recoleccion de datos de Agente=== #
-
-
-    def posicion_a_dto(self,posicion):
-        if posicion is None:
-            return None
-        return {"x": posicion[0], "y": posicion[1]}
+# === Funciones Auxiliares para Step DTO === #
 
     def _agente_a_dto(self, agente):
+        def posicion_a_dto(posicion):
+            if posicion is None:
+                return None
+            return {"x": posicion[0], "y": posicion[1]}
+
         return {
             "id": agente.unique_id,
             "rol": agente.role.name,
-            "posicion": self.posicion_a_dto(agente.pos),
-            "posicion_anterior": self.posicion_a_dto(agente.posicion_anterior),
-            "posicion_objetivo": self.posicion_a_dto(agente.posicion_objetivo),
+            "posicion": posicion_a_dto(agente.pos),
+            "posicion_anterior": posicion_a_dto(agente.posicion_anterior),
+            "posicion_objetivo": posicion_a_dto(agente.posicion_objetivo),
             "accion": agente.accion_actual.value,
             "acciones_turno": [accion.value for accion in agente.acciones_turno],
             "ap": agente.ap,
@@ -627,9 +624,6 @@ class FlashPointModel(Model):
             "llevando_victima": agente.llevando_victima,
             "estado": agente.estado.name
         }
-
-
-# === Funciones Auxiliares para Step DTO === #
     
     def _nodo_a_dto(self, nodo):
         poi_dto = None
@@ -647,7 +641,6 @@ class FlashPointModel(Model):
             "fuego": nodo.estado_fuego.name,
             "poi": poi_dto
         }
-
 
     def _arista_a_dto(self, key):
         arista = self.mapa_aristas[key]
