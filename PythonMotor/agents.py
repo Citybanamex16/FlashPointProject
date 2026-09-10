@@ -47,6 +47,15 @@ class Rescuer(Agent):
         self.ap -= costo
         return True
 
+    def _soltar_victima(self):
+        # Si el agente está llevando una víctima, la deja en la celda actual y marca el POI como revelado
+        if self.llevando_victima:
+            self.llevando_victima = False
+            nodo_actual = self.model.mapa_nodos[self.pos]
+            poi_victima = POI(TipoPOI.VICTIMA)
+            poi_victima.revelado = True
+            nodo_actual.contenido.append(poi_victima)
+
     def _obtener_costo_real_arista(self, arista):
         # Costo en AP para cruzar/destruir obstáculos
         if arista is None:
@@ -91,6 +100,10 @@ class Rescuer(Agent):
         # Peso de pathfinding para celdas según rol
         peso_base = self._obtener_costo_real_nodo(nodo)
 
+        # Prohibir entrar al fuego con víctima
+        if self.llevando_victima and nodo.estado_fuego == EstadoFuego.FUEGO:
+            return float('inf')
+
         if self.role == Role.SEARCHER and nodo.estado_fuego != EstadoFuego.LIMPIO:
             peso_base += 4.0
         elif self.role == Role.SOLDIER and nodo.estado_fuego != EstadoFuego.LIMPIO:
@@ -101,18 +114,59 @@ class Rescuer(Agent):
     def _es_preservacion_estructural_activa(self):
         return self.model.marcadores_dano <= 12
 
+    def _hay_fuego_critico(self, umbral=8):
+        # Cuenta el número de celdas en estado FUEGO y compara con el umbral
+        fuegos = sum(1 for n in self.model.mapa_nodos.values() if n.estado_fuego == EstadoFuego.FUEGO)
+        return fuegos >= umbral
+
     def _es_salida(self, pos):
         x, y = pos
         return x == 0 or x == self.model.grid.width - 1 or y == 0 or y == self.model.grid.height - 1
 
     def _obtener_pois_activos(self):
-        # Coordenadas de POIs ocultos o víctimas en el mapa
-        return [pos for pos, nodo in self.model.mapa_nodos.items() if any(isinstance(c, POI) for c in nodo.contenido)]
+        # Coordenadas de POIs no reclamados por otros agentes
+        pois = []
+        for pos, nodo in self.model.mapa_nodos.items():
+            if any(isinstance(c, POI) for c in nodo.contenido):
+                agente_dueno = self.model.pois_reclamados.get(pos)
+                if agente_dueno is None or agente_dueno == self:
+                    pois.append(pos)
+        return pois
+
+    def _seleccionar_mejor_poi(self):
+        # Selecciona el POI más cercano considerando la ruta de ida y vuelta a la salida más cercana
+        pois = self._obtener_pois_activos()
+        if not pois:
+            return None
+
+        salidas = self._obtener_salidas()
+        mejor_poi = None
+        menor_costo_total = float('inf')
+
+        for poi_pos in pois:
+            # Distancia actual -> POI
+            _, costo_a_poi = self._encontrar_ruta_optima([poi_pos])
+            if costo_a_poi == float('inf'):
+                continue
+
+            # Distancia POI -> Salida más cercana
+            _, costo_poi_a_salida = self._encontrar_ruta_optima(salidas, origen=poi_pos)
+            costo_total = costo_a_poi + costo_poi_a_salida
+
+            if costo_total < menor_costo_total:
+                menor_costo_total = costo_total
+                mejor_poi = poi_pos
+
+        if mejor_poi:
+            # Marcar el POI como reclamado por este agente para evitar conflictos
+            self.model.pois_reclamados[mejor_poi] = self
+
+        return mejor_poi
 
     def _obtener_salidas(self):
         return [pos for pos in self.model.mapa_nodos.keys() if self._es_salida(pos)]
 
-    def _encontrar_ruta_optima(self, destinos):
+    def _encontrar_ruta_optima(self, destinos, origen=None):
         # Dijkstra con pesos percibidos según el rol
         if not destinos:
             return None, float('inf')
@@ -150,6 +204,7 @@ class Rescuer(Agent):
             if isinstance(item, POI):
                 item.revelado = True
 
+                # Eliminar POI del mapa de reclamados si es falso o víctima recogida
                 if self.pos in self.model.pois_reclamados:
                     del self.model.pois_reclamados[self.pos]
 
@@ -253,29 +308,41 @@ class Rescuer(Agent):
         return False
 
     def _ejecutar_estado_search(self):
-        # Estado SEARCH: Buscar POIs o atacar fuego (SOLDIER)
+        # Estado SEARCH: Buscar POIs activos y extinguir amenazas si es necesario
+        if self._hay_fuego_critico(umbral=8) and self.role != Role.SEARCHER:
+            if self._extinguir_amenaza_adjacente():
+                return True
+
         if self.role == Role.SOLDIER and self._extinguir_amenaza_adjacente():
             return True
 
-        pois = self._obtener_pois_activos()
-        if not pois:
-            return self._extinguir_amenaza_adjacente() 
+        poi_objetivo = self._seleccionar_mejor_poi()
+        if not poi_objetivo:
+            return self._extinguir_amenaza_adjacente()
 
-        ruta, _ = self._encontrar_ruta_optima(pois)
+        ruta, _ = self._encontrar_ruta_optima([poi_objetivo])
         if not ruta or len(ruta) < 2:
             return self._extinguir_amenaza_adjacente()
 
         return self._avanzar_hacia(ruta[1])
 
     def _ejecutar_estado_escape(self):
-        # Estado ESCAPE: Dirigirse a la salida más cercana
+        # Estado ESCAPE: Llevar víctima a la salida más cercana y extinguir amenazas si es necesario
         salidas = self._obtener_salidas()
-        ruta, _ = self._encontrar_ruta_optima(salidas)
+        ruta, costo = self._encontrar_ruta_optima(salidas)
         
-        if not ruta or len(ruta) < 2:
-            return False
+        # Si el fuego bloquea completamente el camino a cualquier salida
+        if not ruta or len(ruta) < 2 or costo == float('inf'):
+            self._soltar_victima()
+            return self._extinguir_amenaza_adjacente()
 
-        return self._avanzar_hacia(ruta[1])
+        exito = self._avanzar_hacia(ruta[1])
+        if not exito:
+            # Si el movimiento falla por obstáculo o fuego
+            self._soltar_victima()
+            return self._extinguir_amenaza_adjacente()
+
+        return True
 
     def _extinguir_amenaza_adjacente(self):
         # Revisa primero la celda actual y luego las vecinas accesibles
