@@ -13,6 +13,9 @@ class FlashPointModel(Model):
         self.grid = MultiGrid(width, height, torus=False)
         self.bolsa_poi = []
 
+        # --- Tracker de POIs ---
+        self.pois_reclamados = {}  
+
         # --- Trackers globales y estado de la partida ---
         self.victimas_salvadas = 0
         self.victimas_perdidas = 0
