@@ -1,0 +1,7 @@
+Hello, and thank you for checking out my mushroom pack! I made this pack because a) I like mushrooms, and b) I wanted to educate people on more about them. This pack, like most of my packs is completely free! Enjoy! However, there is a paid version here: https://assetstore.unity.com/packages/slug/359508 that you could purchase if you want to support me. The paid pack doesn't include any new species of mushrooms. Instead, it has extra sample scenes, and a bunch of premade mushroom clusters using the mushrooms from the free pack. Think of the paid pack as a way to support me, or as a way to have all those wonderful clusters without building them yourself. If you do purchase the paid pack, I am very grateful! Any future mushrooms created will be added to both the free and the paid versions.
+
+Each species of mushroom will have a little description I wrote up explaining what the mushroom is, its habitat, its ediblity, lookalikes, etc. found in a PDF in the prefabs folder. This is meant to help you the developer know exactly what kind of mushroom you're putting into your scene, and what you can do to make it look and feel more authentic. I hope you learn some new things about mushrooms, and maybe you'll love them more than me! Thanks again for checking me out!
+
+Are you curious about how I made these mushrooms? Check out a video of me making the Shiitake mushrooms from start to end:
+
+https://youtu.be/uC8ZztXEjAw
