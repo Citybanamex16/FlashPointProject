@@ -43,6 +43,13 @@ class Rescuer(Agent):
         self.acciones_turno = []
         self.eventos_turno = []
         self.estado = AgentStatus.ACTIVE
+        # Si es True, el sistema dinámico de roles no puede reasignar a este
+        # agente. Se usa para los "searchers dedicados" enviados al POI
+        # inicial más cercano: permanecen SEARCHER hasta completar el
+        # rescate (ida y vuelta) o encontrar una falsa alarma.
+        self.role_bloqueado = False
+        self.turns_without_progress = 0
+        self._last_target_distance = None
 
     def registrar_accion(self, accion, objetivo=None):
         self.accion_actual = accion
@@ -68,6 +75,14 @@ class Rescuer(Agent):
         })
         self.model._marcar_agente(self)
         self.model._visualizar_accion_agente(self)
+        if accion in (
+            AgentAction.EXTINGUISH,
+            AgentAction.PICK_UP_VICTIM,
+            AgentAction.RESCUE_VICTIM,
+            AgentAction.DROP_VICTIM,
+        ):
+            self.turns_without_progress = 0
+            self._last_target_distance = None
 
     def step(self):
         if self.estado == AgentStatus.KNOCKED_DOWN:
@@ -101,6 +116,18 @@ class Rescuer(Agent):
         self.saved_ap = 0
 
     def _terminar_turno(self):
+        objetivo = self._target_actual()
+        if objetivo is not None:
+            distancia_actual = self._distancia_manhattan(self.pos, objetivo)
+            if (
+                self._last_target_distance is not None
+                and distancia_actual >= self._last_target_distance
+            ):
+                self.turns_without_progress += 1
+            self._last_target_distance = distancia_actual
+        else:
+            self._last_target_distance = None
+
         self.saved_ap = min(4, self.ap)
         self.ap = 0
 
@@ -176,12 +203,22 @@ class Rescuer(Agent):
         return max(1.0, peso_base)
 
     def _es_preservacion_estructural_activa(self):
-        return self.model.marcadores_dano <= 12
+        return self.model.marcadores_dano <= 20
 
     def _hay_fuego_critico(self, umbral=8):
         # Cuenta el número de celdas en estado FUEGO y compara con el umbral
         fuegos = sum(1 for n in self.model.mapa_nodos.values() if n.estado_fuego == EstadoFuego.FUEGO)
         return fuegos >= umbral
+
+    def _distancia_manhattan(self, a, b):
+        return abs(a[0] - b[0]) + abs(a[1] - b[1])
+
+    def _target_actual(self):
+        if self.llevando_victima:
+            return None
+        if self.role == Role.SOLDIER:
+            return self._fuego_objetivo
+        return self._poi_objetivo
 
     def _obtener_fuegos_activos(self):
         return [
@@ -234,6 +271,54 @@ class Rescuer(Agent):
             con_riesgo.append((humo_adyacente, pos))
         con_riesgo.sort(key=lambda item: item[0], reverse=True)
         return [pos for _, pos in con_riesgo]
+
+    def _puede_cortar_muro(self, siguiente_pos):
+        return False
+        # Never chop when the building is close to collapse.
+        if self.model.marcadores_dano <= 12:
+            return False
+
+        nodo_actual = self.model.mapa_nodos[self.pos]
+        nodo_destino = self.model.mapa_nodos[siguiente_pos]
+        arista = nodo_actual.vecinos.get(nodo_destino)
+
+        if not isinstance(arista, Muro) or arista.hp <= 0:
+            return False
+
+        # Targets: exits if carrying, otherwise POIs, otherwise fires.
+        if self.llevando_victima:
+            destinos = self._obtener_salidas()
+        else:
+            destinos = self._obtener_pois_activos()
+            if not destinos:
+                fuegos = self._obtener_fuegos_activos()
+                for f_pos in fuegos:
+                    destinos.extend(self._posiciones_de_trabajo_fuego(f_pos))
+
+        if not destinos:
+            return False
+
+        return not self._existe_ruta_sin_muro(destinos, nodo_actual, arista)
+
+
+    def _existe_ruta_sin_muro(self, destinos, origen, muro):
+        if not destinos:
+            return False
+        pendientes = [origen]
+        visitados = {origen}
+        while pendientes:
+            nodo = pendientes.pop(0)
+            if nodo.pos in destinos:
+                return True
+            for vecino, arista in nodo.vecinos.items():
+                if arista is muro:
+                    continue
+                if isinstance(arista, Muro) and arista.hp > 0:
+                    continue
+                if vecino not in visitados:
+                    visitados.add(vecino)
+                    pendientes.append(vecino)
+        return False
 
     def _posiciones_de_trabajo_fuego(self, fuego_pos):
         nodo_fuego = self.model.mapa_nodos[fuego_pos]
@@ -342,6 +427,9 @@ class Rescuer(Agent):
 
                 if item.tipo == TipoPOI.FALSA_ALARMA:
                     nodo_actual.contenido.remove(item)
+                    # Falsa alarma: liberar de inmediato al searcher dedicado,
+                    # no hay víctima que escoltar de vuelta.
+                    self.role_bloqueado = False
                 elif item.tipo == TipoPOI.VICTIMA and not self.llevando_victima:
                     nodo_actual.contenido.remove(item)
                     self.llevando_victima = True
@@ -351,6 +439,9 @@ class Rescuer(Agent):
             self.llevando_victima = False
             self.model.victimas_salvadas += 1
             self.registrar_accion(AgentAction.RESCUE_VICTIM, self.pos)
+            # Ida y vuelta completa: el searcher dedicado vuelve a estar
+            # disponible para el sistema dinámico de roles.
+            self.role_bloqueado = False
 
     def _avanzar_hacia(self, siguiente_pos):
         # Intenta moverse a un nodo adyacente
@@ -363,8 +454,9 @@ class Rescuer(Agent):
             if isinstance(arista, Puerta) and arista.cerrado:
                 return self.alternar_puerta(siguiente_pos)
             if isinstance(arista, Muro) and arista.hp > 0:
-                return self.cortar_muro(siguiente_pos)
-
+                if self._puede_cortar_muro(siguiente_pos):
+                    return self.cortar_muro(siguiente_pos)
+                return False
         # Prohibido entrar al fuego con víctima
         if self.llevando_victima and nodo_destino.estado_fuego == EstadoFuego.FUEGO:
             return False
@@ -529,12 +621,33 @@ class Rescuer(Agent):
             and self.model.mapa_nodos[self._fuego_objetivo].estado_fuego
             != EstadoFuego.FUEGO
         ):
+            if self.model.fuegos_reclamados.get(self._fuego_objetivo) is self:
+                del self.model.fuegos_reclamados[self._fuego_objetivo]
             self._fuego_objetivo = None
 
         if self._fuego_objetivo is None:
-            fuegos = self._obtener_fuegos_activos()
+            fuegos_riesgo = self._fuegos_priorizados_por_riesgo()
+            candidatos_fuego = (
+                fuegos_riesgo
+                if fuegos_riesgo
+                else self._obtener_fuegos_activos()
+            )
+
+            # Preferir focos que ningún otro SOLDIER esté trabajando ya,
+            # para repartir la cobertura en vez de que varios converjan
+            # sobre el mismo foco mientras otros quedan sin atender. Si
+            # todos los focos activos ya están reclamados (más soldiers
+            # que focos), se permite converger como respaldo en vez de
+            # dejar a este agente sin objetivo.
+            libres = [
+                f_pos for f_pos in candidatos_fuego
+                if self.model.fuegos_reclamados.get(f_pos) in (None, self)
+            ]
+            if libres:
+                candidatos_fuego = libres
+
             posiciones_trabajo = []
-            for f_pos in fuegos:
+            for f_pos in candidatos_fuego:
                 for vecino, arista in self.model.mapa_nodos[f_pos].vecinos.items():
                     if isinstance(arista, Muro) and arista.hp > 0:
                         continue
@@ -553,6 +666,13 @@ class Rescuer(Agent):
                         mejor = f_pos
                 self._fuego_objetivo = mejor
 
+                # Soltar cualquier reclamo anterior de este agente y
+                # reclamar el foco recién elegido.
+                for pos, owner in list(self.model.fuegos_reclamados.items()):
+                    if owner is self and pos != mejor:
+                        del self.model.fuegos_reclamados[pos]
+                self.model.fuegos_reclamados[mejor] = self
+
         if self._fuego_objetivo is not None:
             posiciones = []
             for vecino, arista in self.model.mapa_nodos[self._fuego_objetivo].vecinos.items():
@@ -565,6 +685,19 @@ class Rescuer(Agent):
             ruta, _ = self._encontrar_ruta_optima(posiciones)
             if ruta and len(ruta) >= 2:
                 return self._avanzar_hacia(ruta[1])
+
+        # Use spare AP on nearby smoke instead of idling when blocked.
+        if self.ap > 4:
+            for vecino, arista in self.model.mapa_nodos[self.pos].vecinos.items():
+                if isinstance(arista, Muro) and arista.hp > 0:
+                    continue
+                if isinstance(arista, Puerta) and arista.cerrado:
+                    continue
+                if (
+                    vecino.estado_fuego == EstadoFuego.HUMO
+                    and self.extinguir(vecino.pos)
+                ):
+                    return True
 
         return False
 

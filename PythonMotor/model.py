@@ -20,6 +20,7 @@ class FlashPointModel(Model):
 
         # --- Tracker de POIs ---
         self.pois_reclamados = {}  
+        self.fuegos_reclamados = {}
         self.pois_perdidos = []
 
         # --- Trackers globales y estado de la partida ---
@@ -71,6 +72,48 @@ class FlashPointModel(Model):
             self.grid.place_agent(bombero, pos_inicial)
             self.mapa_nodos[pos_inicial].contenido.append(bombero)
 
+        # 6. Enviar al bombero más cercano a cada POI inicial conocido como
+        # searcher dedicado (bloqueado hasta completar el rescate).
+        #self._asignar_busqueda_inicial()
+
+    def _asignar_busqueda_inicial(self):
+        # Detecta los POIs ya colocados en el tablero al iniciar la partida
+        # (los de _preparar_juego_familiar) y asigna, a cada uno, al agente
+        # con menor costo de ruta hasta esa celda. Ese agente pasa a
+        # SEARCHER y queda bloqueado (role_bloqueado) hasta completar un
+        # rescate de ida y vuelta o encontrar una falsa alarma.
+        posiciones_poi = [
+            pos
+            for pos, nodo in self.mapa_nodos.items()
+            if any(isinstance(c, POI) for c in nodo.contenido)
+        ]
+
+        agentes_disponibles = list(self.agents)
+
+        for poi_pos in posiciones_poi:
+            if not agentes_disponibles:
+                break
+
+            mejor_agente = None
+            mejor_costo = float('inf')
+
+            for agente in agentes_disponibles:
+                _, costo = agente._encontrar_ruta_optima([poi_pos])
+                if costo < mejor_costo:
+                    mejor_costo = costo
+                    mejor_agente = agente
+
+            if mejor_agente is not None:
+                mejor_agente.role = Role.SEARCHER
+                mejor_agente.role_bloqueado = True
+                mejor_agente._poi_objetivo = poi_pos
+                self.pois_reclamados[poi_pos] = mejor_agente
+                agentes_disponibles.remove(mejor_agente)
+                self._print(
+                    f"[SETUP] Agente {mejor_agente.unique_id} asignado como "
+                    f"searcher dedicado a POI {poi_pos}"
+                )
+
     def _print(self, message):
         if self.verbose:
             print(message)
@@ -103,6 +146,10 @@ class FlashPointModel(Model):
         for pos, agente in list(self.pois_reclamados.items()):
             if agente.estado == AgentStatus.KNOCKED_DOWN:
                 del self.pois_reclamados[pos]
+                # Red de seguridad: si un searcher dedicado es derribado a
+                # mitad de su misión, no debe quedar bloqueado para siempre.
+                if agente.role_bloqueado:
+                    agente.role_bloqueado = False
 
         total_agentes = len(self.agents)
         fuegos_activos = sum(
@@ -114,13 +161,16 @@ class FlashPointModel(Model):
         min_searchers = 1
         max_searchers = max(min_searchers, round(total_agentes * 0.5))
 
-        if fuegos_activos <= 4:
+        if fuegos_activos <= 3:
             objetivo_searchers = max_searchers
-        elif fuegos_activos >= 14:
+        elif fuegos_activos >= 8:
             objetivo_searchers = min_searchers
         else:
             return
 
+        # Los searchers dedicados (role_bloqueado) cuentan para el total,
+        # pero nunca pueden ser elegidos como candidatos para (des)promover:
+        # deben completar su misión de ida y vuelta primero.
         searchers_actuales = [
             agente for agente in self.agents if agente.role == Role.SEARCHER
         ]
@@ -131,7 +181,7 @@ class FlashPointModel(Model):
 
         if diferencia > 0:
             candidatos = sorted(
-                soldiers_actuales,
+                (a for a in soldiers_actuales if not a.role_bloqueado),
                 key=lambda agente: agente.llevando_victima
             )
             for agente in candidatos[:diferencia]:
@@ -139,12 +189,13 @@ class FlashPointModel(Model):
 
         elif diferencia < 0:
             candidatos = sorted(
-                searchers_actuales,
+                (a for a in searchers_actuales if not a.role_bloqueado),
                 key=lambda agente: agente.llevando_victima
             )
             for agente in candidatos[:abs(diferencia)]:
                 agente.role = Role.SOLDIER
                 agente._poi_objetivo = None
+                agente._fuego_objetivo = None
                 for pos, owner in list(self.pois_reclamados.items()):
                     if owner == agente:
                         del self.pois_reclamados[pos]

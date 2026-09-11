@@ -8,6 +8,7 @@ import pandas as pd
 from mesa.datacollection import DataCollector
 
 from core_types import EstadoFuego, POI, Muro, Puerta
+from agents import AgentAction, AgentStatus, Role
 from model import FlashPointModel
 
 
@@ -79,6 +80,49 @@ def _contar_pois(model):
     return activos, revelados
 
 
+def _contar_accion(agente, accion):
+    return sum(
+        1 for accion_turno in agente.acciones_turno
+        if accion_turno == accion
+    )
+
+
+def _contar_roles(model, role):
+    return sum(1 for agente in model.agents if agente.role == role)
+
+
+def _contar_estados(model, estado):
+    return sum(1 for agente in model.agents if agente.estado == estado)
+
+
+def _totales_acciones(model):
+    agent_data = model.datacollector.get_agent_vars_dataframe()
+    if agent_data.empty:
+        return {}
+
+    action_columns = {
+        "TotalMoves": "MovesThisTurn",
+        "TotalExtinguishes": "ExtinguishesThisTurn",
+        "TotalPickups": "PickupsThisTurn",
+        "TotalRescues": "RescuesThisTurn",
+        "TotalKnockdowns": "KnockdownsThisTurn",
+    }
+    return {
+        total_name: int(agent_data[column].sum())
+        for total_name, column in action_columns.items()
+    }
+
+
+def _motivo_fin(model):
+    if model.estado_juego == "VICTORIA":
+        return "VICTORIA"
+    if model.victimas_perdidas >= 4:
+        return "VICTIMAS_PERDIDAS"
+    if model.marcadores_dano <= 0:
+        return "COLAPSO"
+    return "LIMITE"
+
+
 # ============================================================
 # DATA COLLECTOR
 # ============================================================
@@ -94,6 +138,8 @@ def build_collector():
     return DataCollector(
         model_reporters={
             "Steps": lambda m: m.steps,
+            "FireAdvances": lambda m: m.fire_advances,
+            "AgentTurns": lambda m: m.fire_advances,
             "DamageMarkers": lambda m: m.marcadores_dano,
             "VictimsSaved": lambda m: m.victimas_salvadas,
             "VictimsLost": lambda m: m.victimas_perdidas,
@@ -102,15 +148,63 @@ def build_collector():
                 m,
                 EstadoFuego.FUEGO
             ),
+            "SmokeCells": lambda m: _contar_estado_fuego(
+                m,
+                EstadoFuego.HUMO
+            ),
+            "CleanCells": lambda m: _contar_estado_fuego(
+                m,
+                EstadoFuego.LIMPIO
+            ),
             "WallsDestroyed": lambda m: _walls(m)[2],
+            "WallsDamaged": lambda m: _walls(m)[1],
+            "DoorsOpen": lambda m: _contar_puertas(m)[0],
+            "DoorsClosed": lambda m: _contar_puertas(m)[1],
             "ActivePOIs": lambda m: _pois(m)[0],
+            "RevealedPOIs": lambda m: _pois(m)[1],
+            "Searchers": lambda m: _contar_roles(m, Role.SEARCHER),
+            "Soldiers": lambda m: _contar_roles(m, Role.SOLDIER),
+            "KnockedDown": lambda m: _contar_estados(
+                m,
+                AgentStatus.KNOCKED_DOWN
+            ),
+            "CarryingVictims": lambda m: sum(
+                1 for agente in m.agents if agente.llevando_victima
+            ),
         },
 
         agent_reporters={
             "Role": lambda a: a.role.value,
+            "Status": lambda a: a.estado.value,
+            "RoleLocked": lambda a: a.role_bloqueado,
+            "TurnsWithoutProgress": lambda a: getattr(
+                a,
+                "turns_without_progress",
+                0
+            ),
             "CarryingVictim": lambda a: a.llevando_victima,
             "AP_Remaining": lambda a: a.ap,
             "Saved_AP": lambda a: a.saved_ap,
+            "MovesThisTurn": lambda a: _contar_accion(
+                a,
+                AgentAction.MOVE
+            ),
+            "ExtinguishesThisTurn": lambda a: _contar_accion(
+                a,
+                AgentAction.EXTINGUISH
+            ),
+            "PickupsThisTurn": lambda a: _contar_accion(
+                a,
+                AgentAction.PICK_UP_VICTIM
+            ),
+            "RescuesThisTurn": lambda a: _contar_accion(
+                a,
+                AgentAction.RESCUE_VICTIM
+            ),
+            "KnockdownsThisTurn": lambda a: _contar_accion(
+                a,
+                AgentAction.KNOCKED_DOWN
+            ),
         }
     )
 
@@ -124,8 +218,14 @@ class MeasuredFlashPointModel(FlashPointModel):
 
         super().__init__(**kwargs)
 
+        self.fire_advances = 0
+
         self.datacollector = build_collector()
         self.datacollector.collect(self)
+
+    def avanzar_fuego(self):
+        self.fire_advances += 1
+        super().avanzar_fuego()
 
     def step(self):
         super().step()
@@ -234,15 +334,71 @@ def ejecutar_batch(
             "VictimsSaved": model.victimas_salvadas,
             "VictimsLost": model.victimas_perdidas,
             "GameState": model.estado_juego,
+            "EndReason": _motivo_fin(model),
+            "FireAdvances": model.fire_advances,
+            "AgentTurns": model.fire_advances,
             "FireCells": _contar_estado_fuego(
                 model,
                 EstadoFuego.FUEGO
             ),
+            "SmokeCells": _contar_estado_fuego(
+                model,
+                EstadoFuego.HUMO
+            ),
+            "CleanCells": _contar_estado_fuego(
+                model,
+                EstadoFuego.LIMPIO
+            ),
             "WallsDestroyed": _contar_paredes(model)[2],
+            "WallsDamaged": _contar_paredes(model)[1],
+            "DoorsOpen": _contar_puertas(model)[0],
+            "DoorsClosed": _contar_puertas(model)[1],
             "ActivePOIs": _contar_pois(model)[0],
+            "RevealedPOIs": _contar_pois(model)[1],
+            "Searchers": _contar_roles(model, Role.SEARCHER),
+            "Soldiers": _contar_roles(model, Role.SOLDIER),
+            "KnockedDown": _contar_estados(
+                model,
+                AgentStatus.KNOCKED_DOWN
+            ),
+            "CarryingVictims": sum(
+                1 for agente in model.agents if agente.llevando_victima
+            ),
         })
+        resultados[-1].update(_totales_acciones(model))
 
     df = pd.DataFrame(resultados)
+
+    agent_df = pd.concat(
+        [m.datacollector.get_agent_vars_dataframe() for _, m in modelos],
+        keys=[seed for seed, _ in modelos],
+        names=["Seed", "Step", "AgentID"],
+    )
+
+    final_agents = (
+        agent_df
+        .groupby(level=["Seed", "AgentID"])
+        .tail(1)
+        .reset_index()
+    )
+
+    stuck_by_game = final_agents.groupby("Seed")[
+        "TurnsWithoutProgress"
+    ].max()
+    df["MaxAgentTurnsWithoutProgress"] = df["Seed"].map(stuck_by_game)
+    df["AvgAgentTurnsWithoutProgress"] = (
+        final_agents.groupby("Seed")["TurnsWithoutProgress"]
+        .mean()
+        .reindex(df["Seed"])
+        .values
+    )
+
+    print()
+    print("TURNS WITHOUT PROGRESS (per agent, final value)")
+    print(df.groupby("GameState")[[
+        "MaxAgentTurnsWithoutProgress",
+        "AvgAgentTurnsWithoutProgress",
+    ]].mean().round(2))
 
     # ========================================================
     # RESUMEN
@@ -267,6 +423,7 @@ def ejecutar_batch(
 
     print()
     print(f"Avg turns:   {df['Steps'].mean():.1f}")
+    print(f"Avg agent turns: {df['AgentTurns'].mean():.1f}")
     print(f"Avg saved:   {df['VictimsSaved'].mean():.2f}")
     print(f"Avg lost:    {df['VictimsLost'].mean():.2f}")
     print(f"Avg damage:  {df['DamageMarkers'].mean():.2f}")
@@ -275,6 +432,9 @@ def ejecutar_batch(
         f"Avg walls destroyed: "
         f"{df['WallsDestroyed'].mean():.2f}"
     )
+    print("End reasons:")
+    for reason, count in df["EndReason"].value_counts().items():
+        print(f"  {reason}: {count}")
 
     print("=" * 60)
 
