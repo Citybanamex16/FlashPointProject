@@ -99,6 +99,11 @@ class FlashPointModel(Model):
         plt.pause(self.pausa_visualizacion)
 
     def _recalcular_roles_dinamicos(self):
+        # Release POI claims from agents that are no longer acting.
+        for pos, agente in list(self.pois_reclamados.items()):
+            if agente.estado == AgentStatus.KNOCKED_DOWN:
+                del self.pois_reclamados[pos]
+
         total_agentes = len(self.agents)
         fuegos_activos = sum(
             1
@@ -106,34 +111,21 @@ class FlashPointModel(Model):
             if nodo.estado_fuego == EstadoFuego.FUEGO
         )
 
-        umbral_bajo = 5
-        umbral_alto = 12
         min_searchers = 1
-        max_searchers = max(min_searchers, round(total_agentes * 0.66))
+        max_searchers = max(min_searchers, round(total_agentes * 0.5))
 
-        if fuegos_activos <= umbral_bajo:
+        if fuegos_activos <= 4:
             objetivo_searchers = max_searchers
-        elif fuegos_activos >= umbral_alto:
+        elif fuegos_activos >= 14:
             objetivo_searchers = min_searchers
         else:
-            proporcion = 1 - (
-                (fuegos_activos - umbral_bajo)
-                / (umbral_alto - umbral_bajo)
-            )
-            objetivo_searchers = round(
-                min_searchers
-                + proporcion * (max_searchers - min_searchers)
-            )
+            return
 
         searchers_actuales = [
-            agente
-            for agente in self.agents
-            if agente.role == Role.SEARCHER
+            agente for agente in self.agents if agente.role == Role.SEARCHER
         ]
         soldiers_actuales = [
-            agente
-            for agente in self.agents
-            if agente.role == Role.SOLDIER
+            agente for agente in self.agents if agente.role == Role.SOLDIER
         ]
         diferencia = objetivo_searchers - len(searchers_actuales)
 
@@ -152,10 +144,10 @@ class FlashPointModel(Model):
             )
             for agente in candidatos[:abs(diferencia)]:
                 agente.role = Role.SOLDIER
+                agente._poi_objetivo = None
                 for pos, owner in list(self.pois_reclamados.items()):
                     if owner == agente:
                         del self.pois_reclamados[pos]
-
 
     def step(self):
 
@@ -446,7 +438,9 @@ class FlashPointModel(Model):
             if isinstance(item, POI)
         )
 
-        while pois_activos < 3 and self.bolsa_poi:
+        intentos = 0
+        while pois_activos < 3 and self.bolsa_poi and intentos < 50:
+            intentos += 1
             target_x = random.randint(1, 8)
             target_y = random.randint(1, 6)
             nodo_objetivo = self.mapa_nodos[(target_x, target_y)]
@@ -457,7 +451,14 @@ class FlashPointModel(Model):
             ):
                 continue
 
+            if self._celda_adyacente_a_fuego(nodo_objetivo):
+                continue
+
             if nodo_objetivo.estado_fuego != EstadoFuego.LIMPIO:
+                self._print(
+                    f"[POI] Sobrescribe {nodo_objetivo.estado_fuego.name} "
+                    f"en ({target_x},{target_y})"
+                )
                 nodo_objetivo.estado_fuego = EstadoFuego.LIMPIO
 
             nuevo_poi = POI(self.bolsa_poi.pop())
@@ -481,6 +482,16 @@ class FlashPointModel(Model):
                     self._print("[POI] Falsa alarma")
 
             self._marcar_nodo(nodo_objetivo)
+
+    def _celda_adyacente_a_fuego(self, nodo):
+        for vecino, arista in nodo.vecinos.items():
+            if isinstance(arista, Muro) and arista.hp > 0:
+                continue
+            if isinstance(arista, Puerta) and arista.cerrado:
+                continue
+            if vecino.estado_fuego == EstadoFuego.FUEGO:
+                return True
+        return False
 
 
 

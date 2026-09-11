@@ -7,7 +7,7 @@ plt.ion()
 print("Inicializando FlashPointModel (10x8 - Reglas Familiares)...")
 modelo = FlashPointModel(numAgents=6, width=10, height=8)
 modelo.visualizar_acciones_turno = True
-modelo.pausa_visualizacion = 0.5
+modelo.pausa_visualizacion = 0.000001
 
 # Renderizar estado inicial
 modelo.visualizar_matplot()
