@@ -13,6 +13,9 @@ public class BoardManager : MonoBehaviour{
     public bool autoStep = true;
     public BoardBuilder boardBuilder;
 
+    [Header("Referencias")]
+    public GameView viewRef;
+
     // Diccionarios de referencia a las Vistas de la escena
     private Dictionary<Vector2Int, NodeView> _nodeViews;
     private Dictionary<string, EdgeView> _edgeViews;
@@ -52,6 +55,9 @@ public class BoardManager : MonoBehaviour{
 
         // 3. Cuando llega aquí, la tarea ya terminó. Obtenemos el resultado.
         StepDTO stepDTO = apiTask.Result;
+
+        // 3.5 Actualizamos GUI
+        viewRef.UpdateGUI(stepDTO);
 
         // 4. Aplicamos los cambios si el modelo es válido
         if (stepDTO != null)

@@ -18,6 +18,7 @@ public GameObject agentPrefab;
 [Header("Referencias")]
 public CameraController MainCamara;
 
+
 private SetupDTO _lastSetupData;
 
 
