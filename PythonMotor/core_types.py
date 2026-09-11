@@ -1,6 +1,5 @@
 from enum import Enum
 
-# ==== Enums de Estado ==== #
 class EstadoFuego(Enum):
     LIMPIO = 0
     HUMO = 1
@@ -14,21 +13,18 @@ class TipoPOI(Enum):
     VICTIMA = 1
     FALSA_ALARMA = 2
 
-# ==== Objetos de Juego ==== #
 class POI():
     def __init__(self, tipo):
-        self.tipo = tipo # TipoPOI (Victima o Falsa Alarma)
-        self.revelado = False # Comienza boca abajo
+        self.tipo = tipo
+        self.revelado = False
 
-# ==== Clases de modelo ==== #
 class Nodo():
     def __init__(self, pos):
-        self.pos = pos # Vector2D de posicion (x,y)
-        self.estado_fuego = EstadoFuego.LIMPIO # Estado del hazard
-        self.contenido = [] # Lista para almacenar Firefighters, POIs, etc.
-        self.vecinos = {} # Diccionario de vecinos {Nodo: Arista}
+        self.pos = pos
+        self.estado_fuego = EstadoFuego.LIMPIO
+        self.contenido = []
+        self.vecinos = {}
 
-# Clase abstracta
 class Arista():
     def __init__(self, tipo):
         self.tipo = tipo
@@ -48,7 +44,7 @@ class Puerta(Arista):
             self.cerrado = True
         
     def destruir(self):
-        self.cerrado = False # En el juego, una puerta destruida cuenta como espacio abierto
+        self.cerrado = False
         self.destruida = True
 
 class Muro(Arista):

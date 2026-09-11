@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 
 
 class FlashPointModel(Model):
-    def __init__(self, numAgents, width, height, verbose=True):
+    def __init__(self, numAgents, width, height, verbose=False):
         super().__init__()
         self.grid = MultiGrid(width, height, torus=False)
         self.bolsa_poi = []
@@ -53,7 +53,6 @@ class FlashPointModel(Model):
         self._cargar_infraestructura_tablero()
         self._preparar_juego_familiar()
 
-        # 5. Instanciar y colocar agentes en las 4 puertas exteriores
         roles_disponibles = [
             Role.SEARCHER,
             Role.SOLDIER,
@@ -69,14 +68,9 @@ class FlashPointModel(Model):
             bombero = Rescuer(self, role=rol_asignado)
             self.agents.add(bombero)
 
-            # Asignar puerta exterior cíclicamente
             pos_inicial = puertas_exteriores[i % len(puertas_exteriores)]
             self.grid.place_agent(bombero, pos_inicial)
             self.mapa_nodos[pos_inicial].contenido.append(bombero)
-
-        # 6. Enviar al bombero más cercano a cada POI inicial conocido como
-        # searcher dedicado (bloqueado hasta completar el rescate).
-        #self._asignar_busqueda_inicial()
 
     def _asignar_busqueda_inicial(self):
         # Detecta los POIs ya colocados en el tablero al iniciar la partida

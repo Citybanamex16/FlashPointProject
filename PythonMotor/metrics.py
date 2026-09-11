@@ -277,14 +277,6 @@ def ejecutar_partida(
     else:
         resultado = "LIMITE"
 
-    # print(
-    #     f"Game {game_number:>2}/{total_games} | "
-    #     f"{resultado:<8} | "
-    #     f"{steps:>3} turns | "
-    #     f"Saved: {model.victimas_salvadas} | "
-    #     f"Lost: {model.victimas_perdidas}"
-    # )
-
     return model
 
 
