@@ -116,10 +116,10 @@ def _totales_acciones(model):
 def _motivo_fin(model):
     if model.estado_juego == "VICTORIA":
         return "VICTORIA"
-    if model.victimas_perdidas >= 4:
-        return "VICTIMAS_PERDIDAS"
     if model.marcadores_dano <= 0:
         return "COLAPSO"
+    if model.victimas_perdidas >= 4:
+        return "VICTIMAS_PERDIDAS"
     return "LIMITE"
 
 

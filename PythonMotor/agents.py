@@ -44,6 +44,7 @@ class RandomRescuer(Agent):
         self.posicion_objetivo = None
         self._poi_objetivo = None
         self._fuego_objetivo = None
+        self._contencion = False
         self.acciones_turno = []
         self.eventos_turno = []
         self.estado = AgentStatus.ACTIVE
@@ -80,7 +81,7 @@ class RandomRescuer(Agent):
         self._iniciar_turno()
         self._interactuar_celda_actual()
 
-        while self.ap > 0:
+        while self.ap > 0 and self.model.estado_juego == "EN_CURSO":
             acciones = self._acciones_legales()
             if not acciones:
                 break
@@ -114,9 +115,12 @@ class RandomRescuer(Agent):
         acciones = []
         nodo_actual = self.model.mapa_nodos[self.pos]
 
+        if nodo_actual.estado_fuego == EstadoFuego.FUEGO:
+            if self.ap >= 2:
+                acciones.append((AgentAction.EXTINGUISH, self.pos))
+            return acciones
+
         if nodo_actual.estado_fuego == EstadoFuego.HUMO and self.ap >= 1:
-            acciones.append((AgentAction.EXTINGUISH, self.pos))
-        elif nodo_actual.estado_fuego == EstadoFuego.FUEGO and self.ap >= 2:
             acciones.append((AgentAction.EXTINGUISH, self.pos))
 
         for vecino, arista in nodo_actual.vecinos.items():
@@ -137,7 +141,7 @@ class RandomRescuer(Agent):
                 or vecino.estado_fuego == EstadoFuego.FUEGO
             ) else 1
             if (
-                self.ap >= costo_movimiento
+                self.ap >= (4 if vecino.estado_fuego == EstadoFuego.FUEGO else costo_movimiento)
                 and not (
                     self.llevando_victima
                     and vecino.estado_fuego == EstadoFuego.FUEGO
@@ -199,6 +203,7 @@ class RandomRescuer(Agent):
             self.model._marcar_nodo(nodo)
 
             if item.tipo == TipoPOI.FALSA_ALARMA:
+                self.model.falsas_alarmas_resueltas += 1
                 self.registrar_accion(AgentAction.SEARCH, self.pos)
             elif not self.llevando_victima:
                 self.llevando_victima = True
@@ -211,6 +216,7 @@ class RandomRescuer(Agent):
             self.model.victimas_salvadas += 1
             self.model._marcar_nodo(nodo)
             self.registrar_accion(AgentAction.RESCUE_VICTIM, self.pos)
+            self.model.evaluar_estado_juego()
 
     def _es_salida(self, pos):
         x, y = pos
@@ -243,10 +249,16 @@ class Rescuer(RandomRescuer):
         self._iniciar_turno()
         self._interactuar_celda_actual()
 
-        while self.ap > 0:
+        while self.ap > 0 and self.model.estado_juego == "EN_CURSO":
             accion = self._accion_rescatista() if self.role == Role.SEARCHER else self._accion_soldado()
+            if self._debe_guardar_ap(accion):
+                break
             if accion is None:
-                legales = self._acciones_legales()
+                legales = [
+                    accion for accion in self._acciones_legales()
+                    if accion[0] != AgentAction.MOVE
+                    or self.model.mapa_nodos[accion[1]].estado_fuego == EstadoFuego.LIMPIO
+                ]
                 if not legales:
                     break
                 accion = random.choice(legales)
@@ -258,13 +270,27 @@ class Rescuer(RandomRescuer):
         if getattr(self.model, "_roles_step", None) == self.model.steps:
             return
         self.model._roles_step = self.model.steps
+        self.model.pois_reclamados.clear()
+        self.model.fuegos_reclamados.clear()
         agentes = list(self.model.agents)
-        fuegos = sum(n.estado_fuego == EstadoFuego.FUEGO for n in self.model.mapa_nodos.values())
-        soldados = 0
+        soldados = 2
         libres = [a for a in agentes if not a.llevando_victima]
         elegidos = set(libres[:soldados])
         for agente in agentes:
             agente.role = Role.SOLDIER if agente in elegidos else Role.SEARCHER
+            agente._contencion = agente is libres[0] if libres else False
+
+    def _debe_guardar_ap(self, accion):
+        if self.llevando_victima or self.ap != 1 or accion is None:
+            return False
+        if accion[0] != AgentAction.MOVE:
+            return False
+        pois = [
+            pos for pos, nodo in self.model.mapa_nodos.items()
+            if any(isinstance(item, POI) for item in nodo.contenido)
+        ]
+        ruta = self._ruta(pois)
+        return ruta is not None and len(ruta) == 2
 
     def _ejecutar(self, accion):
         tipo, objetivo = accion
@@ -286,7 +312,7 @@ class Rescuer(RandomRescuer):
                 and not (isinstance(arista, Puerta) and arista.cerrado)
             )
             if fuegos:
-                objetivo = max(fuegos, key=lambda nodo: self._riesgo(nodo.pos))
+                objetivo = max(fuegos, key=lambda nodo: self._valor_fuego(nodo.pos))
                 return AgentAction.EXTINGUISH, objetivo.pos
         if not self.llevando_victima and self.ap >= 1:
             actual = self.model.mapa_nodos[self.pos]
@@ -305,28 +331,56 @@ class Rescuer(RandomRescuer):
             pos for pos, nodo in self.model.mapa_nodos.items()
             if any(isinstance(item, POI) for item in nodo.contenido)
         ]
-        rutas = [(len(ruta), pos) for pos in pois if (ruta := self._ruta([pos]))]
+        rutas = [
+            (len(ruta), pos)
+            for pos in pois
+            if self.model.pois_reclamados.get(pos) in (None, self)
+            and (ruta := self._ruta([pos]))
+        ]
         if not rutas:
-            return None
+            return self._accion_soldado()
         minimo = min(costo for costo, _ in rutas)
+        if minimo > 4:
+            return self._accion_soldado()
         destinos = sorted(pos for costo, pos in rutas if costo <= minimo + 1)
         destinos = [destinos[self.unique_id % len(destinos)]]
+        self.model.pois_reclamados[destinos[0]] = self
         return self._hacia(destinos, evitar_fuego=self.llevando_victima)
 
     def _accion_soldado(self):
+        actual = self.model.mapa_nodos[self.pos]
+        cercanos = [actual] if actual.estado_fuego == EstadoFuego.FUEGO else []
+        cercanos.extend(
+            vecino for vecino, arista in actual.vecinos.items()
+            if vecino.estado_fuego == EstadoFuego.FUEGO
+            and not (isinstance(arista, Muro) and arista.hp > 0)
+            and not (isinstance(arista, Puerta) and arista.cerrado)
+        )
+        if cercanos and self.ap >= 2:
+            objetivo = max(cercanos, key=lambda nodo: self._valor_fuego(nodo.pos))
+            return AgentAction.EXTINGUISH, objetivo.pos
         fuegos = [pos for pos, nodo in self.model.mapa_nodos.items() if nodo.estado_fuego == EstadoFuego.FUEGO]
         if not fuegos:
             humos = [pos for pos, nodo in self.model.mapa_nodos.items() if nodo.estado_fuego == EstadoFuego.HUMO]
             return self._hacia(humos)
 
+        if self._contencion:
+            criticos = [pos for pos in fuegos if self._es_contencion(pos)]
+            fuegos = criticos or fuegos
         rutas = []
         for fuego in fuegos:
+            if self.model.fuegos_reclamados.get(fuego) not in (None, self):
+                continue
             ruta = self._ruta([fuego], evitar_fuego=True, destino_fuego=True)
             if ruta:
-                rutas.append((len(ruta), -self._riesgo(fuego), fuego))
+                rutas.append((len(ruta), -self._valor_fuego(fuego), fuego))
         if not rutas:
             return None
-        return self._hacia([min(rutas)[2]], evitar_fuego=True, destino_fuego=True)
+        minimo = min(costo for costo, _, _ in rutas)
+        cercanos = [ruta for ruta in rutas if ruta[0] <= minimo + 2]
+        destino = min(cercanos, key=lambda ruta: (ruta[1], ruta[0]))[2]
+        self.model.fuegos_reclamados[destino] = self
+        return self._hacia([destino], evitar_fuego=True, destino_fuego=True)
 
     def _hacia(self, destinos, evitar_fuego=False, destino_fuego=False):
         if not destinos:
@@ -402,6 +456,21 @@ class Rescuer(RandomRescuer):
                 elif vecino.estado_fuego == EstadoFuego.HUMO:
                     humo += 1
         return len(vistos) * 4 + humo + muros * 8
+
+    def _valor_fuego(self, origen):
+        x, y = origen
+        bono = 4 if 3 <= x <= 6 and 3 <= y <= 5 else 0
+        bono += 3 if 6 <= x <= 8 and 4 <= y <= 6 else 0
+        return self._riesgo(origen) + bono
+
+    def _es_contencion(self, pos):
+        nodo = self.model.mapa_nodos[pos]
+        for vecino, arista in nodo.vecinos.items():
+            if isinstance(arista, Muro) and arista.hp == 1:
+                return True
+            if any(isinstance(item, POI) for item in vecino.contenido):
+                return True
+        return False
 
     def _salidas(self):
         return [pos for pos in self.model.mapa_nodos if self._es_salida(pos)]

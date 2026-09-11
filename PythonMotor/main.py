@@ -13,7 +13,7 @@ CORS(app)
 @app.route('/api/init', methods=['GET']) 
 def GetSetupData():
     global modelo
-    modelo = FlashPointModel(numAgents=4, width=10, height=8)
+    modelo = FlashPointModel(numAgents=6, width=10, height=8)
     return jsonify(modelo.get_setup_dto()), 200
 
 # 3. Ruta de Step
@@ -31,4 +31,3 @@ if __name__ == '__main__':
     # Ejecuta el servidor de Flask directamente en el hilo principal
     print("🚀 Servidor escuchando en http://127.0.0.1:5000/api/process")
     app.run(host='127.0.0.1', port=5000, debug=False)
-

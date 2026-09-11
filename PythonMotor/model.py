@@ -2,7 +2,7 @@ import random
 from mesa import Model
 from mesa.space import MultiGrid
 from core_types import EstadoFuego, TipoPOI, POI, Nodo, Muro, Puerta
-from agents import AgentAction, AgentStatus, Rescuer, Role
+from agents import AgentAction, AgentStatus, RandomRescuer, Rescuer, Role
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 
@@ -26,8 +26,10 @@ class FlashPointModel(Model):
         # --- Trackers globales y estado de la partida ---
         self.victimas_salvadas = 0
         self.victimas_perdidas = 0
+        self.falsas_alarmas_resueltas = 0
         self.marcadores_dano = 24
         self.estado_juego = "EN_CURSO"
+        self.ultima_tirada = None
         self.reglas_familiares = True
         self.verbose = verbose
 
@@ -213,13 +215,21 @@ class FlashPointModel(Model):
 
         for agent in self.agents:
             agent.step()
+            self.evaluar_estado_juego()
+            if self.estado_juego != "EN_CURSO":
+                return
 
             self._print("\n--- TURNO ---")
             # 1. Turnos de los agentes
             # 2. Fase de propagación del fuego
             self.avanzar_fuego()
+            if self.estado_juego != "EN_CURSO":
+                return
             # 3. Resolver víctimas atrapadas y bomberos derribados
             self._resolver_knockdowns()
+            if self.estado_juego != "EN_CURSO":
+                return
+            self._limpiar_fuego_exterior()
             # 4. Reponer POIs en el tablero
             self._reponer_pois()
             # 5. Evaluar condiciones de victoria/derrota
@@ -231,6 +241,8 @@ class FlashPointModel(Model):
                 
             
     def evaluar_estado_juego(self):
+        if self.estado_juego != "EN_CURSO":
+            return
         if self.victimas_salvadas >= 7:
             self.estado_juego = "VICTORIA"
             self.running = False
@@ -242,14 +254,44 @@ class FlashPointModel(Model):
             self._print("[DERROTA] 4 víctimas")
 
         elif self.marcadores_dano <= 0:
-            self.estado_juego = "DERROTA"
-            self.running = False
-            self._print("[DERROTA] Edificio colapsó")
+            self._finalizar_colapso()
+
+    def _danar_muro(self, muro):
+        muro.golpear()
+        self.marcadores_dano = max(0, self.marcadores_dano - 1)
+        self._marcar_arista(muro)
+        if self.marcadores_dano == 0:
+            self._finalizar_colapso()
+            return False
+        return True
+
+    def _finalizar_colapso(self):
+        if self.estado_juego != "EN_CURSO":
+            return
+        self.estado_juego = "DERROTA"
+        self.running = False
+        for nodo in self.mapa_nodos.values():
+            for item in list(nodo.contenido):
+                if isinstance(item, POI):
+                    nodo.contenido.remove(item)
+                    self.pois_perdidos.append(item)
+                    if item.tipo == TipoPOI.VICTIMA:
+                        self.victimas_perdidas += 1
+                    self._marcar_nodo(nodo)
+        for agente in self.agents:
+            if agente.llevando_victima:
+                agente.llevando_victima = False
+                self.victimas_perdidas += 1
+                self._marcar_agente(agente)
+        self.pois_reclamados.clear()
+        self.fuegos_reclamados.clear()
+        self._print("[DERROTA] Edificio colapsó")
 
 
     def avanzar_fuego(self):
         target_x = random.randint(1, 8)
         target_y = random.randint(1, 6)
+        self.ultima_tirada = (target_x, target_y)
         nodo_objetivo = self.mapa_nodos[(target_x, target_y)]
 
         self._print(f"[DADOS] ({target_x}, {target_y})")
@@ -268,6 +310,8 @@ class FlashPointModel(Model):
             self._print(f"[EXPLOSION] ({target_x}, {target_y})")
             self._resolver_explosion(nodo_objetivo)
 
+        if self.estado_juego != "EN_CURSO":
+            return
         self._resolver_flashovers()
 
 
@@ -289,13 +333,12 @@ class FlashPointModel(Model):
             arista = nodo_origen.vecinos.get(nodo_vecino)
 
             if isinstance(arista, Muro) and arista.hp > 0:
-                arista.golpear()
-                self.marcadores_dano = max(0, self.marcadores_dano - 1)
+                if not self._danar_muro(arista):
+                    return
                 self._print(
                     f"[MURO] {nodo_origen.pos}->{pos_vecino} "
                     f"HP={arista.hp} D={self.marcadores_dano}"
                 )
-                self._marcar_arista(arista)
                 continue
 
             if isinstance(arista, Puerta):
@@ -326,6 +369,8 @@ class FlashPointModel(Model):
                     dy,
                     cardinal
                 )
+                if self.estado_juego != "EN_CURSO":
+                    return
 
     def _proyectar_onda_choque(
         self,
@@ -350,9 +395,8 @@ class FlashPointModel(Model):
             arista = nodo_actual.vecinos.get(nodo_siguiente)
 
             if isinstance(arista, Muro) and arista.hp > 0:
-                arista.golpear()
-                self.marcadores_dano = max(0, self.marcadores_dano - 1)
-                self._marcar_arista(arista)
+                if not self._danar_muro(arista):
+                    return
                 self._print(
                     f"[MURO] {nodo_actual.pos}->{siguiente_pos} "
                     f"HP={arista.hp} D={self.marcadores_dano}"
@@ -432,12 +476,17 @@ class FlashPointModel(Model):
                                 f"[BAJA] Víctima quemada en {nodo.pos} "
                                 f"({self.victimas_perdidas}/4)"
                             )
+                            self.evaluar_estado_juego()
+                            if self.estado_juego != "EN_CURSO":
+                                return
                         else:
                             self._print(
                                 f"[BAJA] Falsa alarma quemada en {nodo.pos}"
                             )
 
-                    elif type(item).__name__ == "Rescuer":
+                    elif isinstance(item, RandomRescuer):
+                        if item.estado == AgentStatus.KNOCKED_DOWN:
+                            continue
                         # 1. Calcular la ambulancia más cercana ("as the crow flies")
                         amb_1 = (0, 3)
                         amb_2 = (7, 7)
@@ -478,6 +527,20 @@ class FlashPointModel(Model):
                                 f"[BAJA] Víctima cargada perdida en {nodo.pos} "
                                 f"({self.victimas_perdidas}/4)"
                             )
+                            self.evaluar_estado_juego()
+                            if self.estado_juego != "EN_CURSO":
+                                return
+
+    def _limpiar_fuego_exterior(self):
+        ancho = self.grid.width - 1
+        alto = self.grid.height - 1
+        for (x, y), nodo in self.mapa_nodos.items():
+            if (
+                nodo.estado_fuego == EstadoFuego.FUEGO
+                and (x == 0 or x == ancho or y == 0 or y == alto)
+            ):
+                nodo.estado_fuego = EstadoFuego.LIMPIO
+                self._marcar_nodo(nodo)
 
 
 
@@ -488,11 +551,9 @@ class FlashPointModel(Model):
             for nodo in self.mapa_nodos.values()
             for item in nodo.contenido
             if isinstance(item, POI)
-        )
+        ) + sum(agente.llevando_victima for agente in self.agents)
 
-        intentos = 0
-        while pois_activos < 3 and self.bolsa_poi and intentos < 50:
-            intentos += 1
+        while pois_activos < 3 and self.bolsa_poi:
             target_x = random.randint(1, 8)
             target_y = random.randint(1, 6)
             nodo_objetivo = self.mapa_nodos[(target_x, target_y)]
@@ -501,9 +562,6 @@ class FlashPointModel(Model):
                 isinstance(c, POI)
                 for c in nodo_objetivo.contenido
             ):
-                continue
-
-            if self._celda_adyacente_a_fuego(nodo_objetivo):
                 continue
 
             if nodo_objetivo.estado_fuego != EstadoFuego.LIMPIO:
@@ -520,7 +578,7 @@ class FlashPointModel(Model):
             self._print(f"[POI] ({target_x}, {target_y})")
 
             if any(
-                type(c).__name__ == "Rescuer"
+                isinstance(c, RandomRescuer)
                 for c in nodo_objetivo.contenido
             ):
                 nuevo_poi.revelado = True
@@ -530,6 +588,7 @@ class FlashPointModel(Model):
 
                 if nuevo_poi.tipo == TipoPOI.FALSA_ALARMA:
                     nodo_objetivo.contenido.remove(nuevo_poi)
+                    self.falsas_alarmas_resueltas += 1
                     pois_activos -= 1
                     self._print("[POI] Falsa alarma")
 
@@ -729,6 +788,7 @@ class FlashPointModel(Model):
 
                     if isinstance(arista, Puerta):
                         arista_dto["cerrado"] = arista.cerrado
+                        arista_dto["destruida"] = arista.destruida
 
                     elif isinstance(arista, Muro):
                         arista_dto["hp"] = arista.hp
@@ -743,7 +803,8 @@ class FlashPointModel(Model):
             "height": self.grid.height,
             "nodes": self._exportar_nodos_dto(),
             "edges": self._exportar_aristas_dto(),
-            "agents": [self._agente_a_dto(agent) for agent in self.agents]
+            "agents": [self._agente_a_dto(agent) for agent in self.agents],
+            "poi_tracker": self._poi_tracker_dto()
         }
 
 
@@ -804,18 +865,25 @@ class FlashPointModel(Model):
 
         if isinstance(arista, Puerta):
             dto["cerrado"] = arista.cerrado
+            dto["destruida"] = arista.destruida
         elif isinstance(arista, Muro):
             dto["hp"] = arista.hp
 
         return dto
 
     def get_step_dto(self, target_x=None, target_y=None):
+        tirada = self.ultima_tirada
+        if target_x is not None and target_y is not None:
+            tirada = (target_x, target_y)
         return {
                 "estado_juego": self.estado_juego,
                 "marcadores_dano": self.marcadores_dano,
                 "victimas_salvadas": self.victimas_salvadas,
                 "victimas_perdidas": self.victimas_perdidas,
-                "tirada_dados": {"x": target_x, "y": target_y},
+                "tirada_dados": (
+                    None if tirada is None else {"x": tirada[0], "y": tirada[1]}
+                ),
+                "poi_tracker": self._poi_tracker_dto(),
 
                 # Solo enviamos la transformación a DTO de los elementos que cambiaron
                 "nodes": [self._nodo_a_dto(self.mapa_nodos[pos]) for pos in self.nodos_afectados],
@@ -826,6 +894,39 @@ class FlashPointModel(Model):
                     if agent.unique_id in self.agentes_afectados
                 ]
             }
+
+    def _poi_tracker_dto(self):
+        tablero_victimas = 0
+        tablero_falsas = 0
+        for nodo in self.mapa_nodos.values():
+            for item in nodo.contenido:
+                if isinstance(item, POI):
+                    if item.tipo == TipoPOI.VICTIMA:
+                        tablero_victimas += 1
+                    else:
+                        tablero_falsas += 1
+        transportadas = sum(agente.llevando_victima for agente in self.agents)
+        perdidas_falsas = sum(
+            item.tipo == TipoPOI.FALSA_ALARMA for item in self.pois_perdidos
+        )
+        bolsa_victimas = self.bolsa_poi.count(TipoPOI.VICTIMA)
+        bolsa_falsas = self.bolsa_poi.count(TipoPOI.FALSA_ALARMA)
+        return {
+            "victimas": {
+                "bolsa": bolsa_victimas,
+                "tablero": tablero_victimas,
+                "transportadas": transportadas,
+                "salvadas": self.victimas_salvadas,
+                "perdidas": self.victimas_perdidas,
+            },
+            "falsas_alarmas": {
+                "bolsa": bolsa_falsas,
+                "tablero": tablero_falsas,
+                "resueltas": self.falsas_alarmas_resueltas,
+                "perdidas": perdidas_falsas,
+            },
+            "activos": tablero_victimas + tablero_falsas + transportadas,
+        }
 
     def visualizar_matplot(self, figsize=(10, 8)):
         if self._fig is None or not plt.fignum_exists(self._fig.number):
@@ -861,7 +962,7 @@ class FlashPointModel(Model):
             bomberos = [
                 c
                 for c in self.grid.get_cell_list_contents((x, y))
-                if type(c).__name__ == "Rescuer"
+                if isinstance(c, RandomRescuer)
             ]
 
             # Dibujar Bomberos
