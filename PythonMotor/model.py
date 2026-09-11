@@ -470,6 +470,7 @@ class FlashPointModel(Model):
 
                         # 4. Manejar a la víctima en caso de que estuviese cargando una
                         if getattr(item, "llevando_victima", False):
+                            item.knocked_down_carrying_victim += 1
                             item.llevando_victima = False
                             self.victimas_perdidas += 1
                             self._marcar_nodo(nodo)

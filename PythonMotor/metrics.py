@@ -185,6 +185,9 @@ def build_collector():
             "CarryingVictim": lambda a: a.llevando_victima,
             "AP_Remaining": lambda a: a.ap,
             "Saved_AP": lambda a: a.saved_ap,
+            "APMoving": lambda a: a.ap_gastado_moviendo,
+            "APActing": lambda a: a.ap_gastado_actuando,
+            "KnockedDownCarrying": lambda a: a.knocked_down_carrying_victim,
             "MovesThisTurn": lambda a: _contar_accion(
                 a,
                 AgentAction.MOVE
@@ -400,6 +403,76 @@ def ejecutar_batch(
         "AvgAgentTurnsWithoutProgress",
     ]].mean().round(2))
 
+    # Attach each game's final state to every final agent row, then compare
+    # cumulative AP usage and carrier knockdowns by outcome.
+    final_agents["GameState"] = final_agents["Seed"].map(
+        df.set_index("Seed")["GameState"]
+    )
+
+    print()
+    print("FINAL AGENT THROUGHPUT (per agent, cumulative)")
+    print(
+        final_agents.groupby("GameState")[
+            ["APMoving", "APActing", "KnockedDownCarrying"]
+        ].mean().round(2)
+    )
+
+
+    # ========================================================
+    # AP NORMALIZADO POR TURNO DE AGENTE
+    # ========================================================
+
+    totals_by_game = (
+        final_agents
+        .groupby("Seed")[
+            ["APMoving", "APActing", "KnockedDownCarrying"]
+        ]
+        .sum()
+    )
+
+    normalized = (
+        df.set_index("Seed")
+        .join(totals_by_game)
+    )
+
+    normalized["APMovingPerTurn"] = (
+        normalized["APMoving"] / normalized["FireAdvances"]
+    )
+
+    normalized["APActingPerTurn"] = (
+        normalized["APActing"] / normalized["FireAdvances"]
+    )
+
+    total_spent = (
+        normalized["APMoving"]
+        + normalized["APActing"]
+    )
+
+    normalized["MovementShare"] = (
+        normalized["APMoving"] / total_spent
+    )
+
+    pickup_denominator = normalized["TotalPickups"].where(
+        normalized["TotalPickups"] > 0
+    )
+
+    normalized["CarrierKOPerPickup"] = (
+        normalized["KnockedDownCarrying"]
+        / pickup_denominator
+    )
+
+    print()
+    print("NORMALIZED THROUGHPUT")
+    print(
+        normalized.groupby("EndReason")[
+            [
+                "APMovingPerTurn",
+                "APActingPerTurn",
+                "MovementShare",
+                "CarrierKOPerPickup",
+            ]
+        ].mean().round(3)
+    )
     # ========================================================
     # RESUMEN
     # ========================================================
