@@ -144,7 +144,7 @@ def ejecutar_partida(
 ):
     """
     Ejecuta una partida completa y muestra su resultado.
-    """
+    """ 
 
     if seed is not None:
         random.seed(seed)

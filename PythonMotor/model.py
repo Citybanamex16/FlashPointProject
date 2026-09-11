@@ -20,6 +20,7 @@ class FlashPointModel(Model):
 
         # --- Tracker de POIs ---
         self.pois_reclamados = {}  
+        self.pois_perdidos = []
 
         # --- Trackers globales y estado de la partida ---
         self.victimas_salvadas = 0
@@ -31,6 +32,9 @@ class FlashPointModel(Model):
 
         self._fig = None
         self._ax = None
+        self.visualizar_acciones_turno = False
+        self.pausa_visualizacion = 0.5
+        self._texto_visualizacion = ""
 
         self.mapa_nodos = {} # Llave: ((x1, y1), (x2, y2)) -> Valor: Objeto Nodo
         self.mapa_aristas = {} # Llave: ((x1, y1), (x2, y2)) -> Valor: Objeto Arista
@@ -53,7 +57,7 @@ class FlashPointModel(Model):
             Role.SOLDIER,
             Role.SOLDIER,
             Role.SOLDIER,
-            Role.SOLDIER            
+            Role.SOLDIER
         ]
         puertas_exteriores = [(3, 0), (6, 7), (0, 4), (9, 3)]
 
@@ -83,6 +87,75 @@ class FlashPointModel(Model):
     def _marcar_agente(self, agente):
         self.agentes_afectados.add(agente.unique_id)
 
+    def _visualizar_accion_agente(self, agente):
+        if not self.visualizar_acciones_turno:
+            return
+
+        self._texto_visualizacion = (
+            f"Agente {agente.unique_id} | {agente.role.name} | "
+            f"Accion: {agente.accion_actual.value} | AP: {agente.ap}"
+        )
+        self.visualizar_matplot()
+        plt.pause(self.pausa_visualizacion)
+
+    def _recalcular_roles_dinamicos(self):
+        total_agentes = len(self.agents)
+        fuegos_activos = sum(
+            1
+            for nodo in self.mapa_nodos.values()
+            if nodo.estado_fuego == EstadoFuego.FUEGO
+        )
+
+        umbral_bajo = 5
+        umbral_alto = 12
+        min_searchers = 1
+        max_searchers = max(min_searchers, round(total_agentes * 0.66))
+
+        if fuegos_activos <= umbral_bajo:
+            objetivo_searchers = max_searchers
+        elif fuegos_activos >= umbral_alto:
+            objetivo_searchers = min_searchers
+        else:
+            proporcion = 1 - (
+                (fuegos_activos - umbral_bajo)
+                / (umbral_alto - umbral_bajo)
+            )
+            objetivo_searchers = round(
+                min_searchers
+                + proporcion * (max_searchers - min_searchers)
+            )
+
+        searchers_actuales = [
+            agente
+            for agente in self.agents
+            if agente.role == Role.SEARCHER
+        ]
+        soldiers_actuales = [
+            agente
+            for agente in self.agents
+            if agente.role == Role.SOLDIER
+        ]
+        diferencia = objetivo_searchers - len(searchers_actuales)
+
+        if diferencia > 0:
+            candidatos = sorted(
+                soldiers_actuales,
+                key=lambda agente: agente.llevando_victima
+            )
+            for agente in candidatos[:diferencia]:
+                agente.role = Role.SEARCHER
+
+        elif diferencia < 0:
+            candidatos = sorted(
+                searchers_actuales,
+                key=lambda agente: agente.llevando_victima
+            )
+            for agente in candidatos[:abs(diferencia)]:
+                agente.role = Role.SOLDIER
+                for pos, owner in list(self.pois_reclamados.items()):
+                    if owner == agente:
+                        del self.pois_reclamados[pos]
+
 
     def step(self):
 
@@ -92,6 +165,8 @@ class FlashPointModel(Model):
         self.nodos_afectados.clear()
         self.aristas_afectadas.clear()
         self.agentes_afectados.clear()
+
+        self._recalcular_roles_dinamicos()
 
         for agent in self.agents:
             agent.step()
@@ -107,10 +182,10 @@ class FlashPointModel(Model):
             # 5. Evaluar condiciones de victoria/derrota
             self.evaluar_estado_juego()
 
-        if self.estado_juego != "EN_CURSO":
-            self._print(f"[FIN] {self.estado_juego}")
-            return
-            
+            if self.estado_juego != "EN_CURSO":
+                self._print(f"[FIN] {self.estado_juego}")
+                return
+                
             
     def evaluar_estado_juego(self):
         if self.victimas_salvadas >= 7:
@@ -172,7 +247,7 @@ class FlashPointModel(Model):
 
             if isinstance(arista, Muro) and arista.hp > 0:
                 arista.golpear()
-                self.marcadores_dano -= 1
+                self.marcadores_dano = max(0, self.marcadores_dano - 1)
                 self._print(
                     f"[MURO] {nodo_origen.pos}->{pos_vecino} "
                     f"HP={arista.hp} D={self.marcadores_dano}"
@@ -233,7 +308,7 @@ class FlashPointModel(Model):
 
             if isinstance(arista, Muro) and arista.hp > 0:
                 arista.golpear()
-                self.marcadores_dano -= 1
+                self.marcadores_dano = max(0, self.marcadores_dano - 1)
                 self._marcar_arista(arista)
                 self._print(
                     f"[MURO] {nodo_actual.pos}->{siguiente_pos} "
@@ -303,17 +378,21 @@ class FlashPointModel(Model):
                 # Iteramos al revés para poder remover elementos de la lista de forma segura
                 for item in reversed(nodo.contenido):
 
-                    if (
-                        isinstance(item, POI)
-                        and item.tipo == TipoPOI.VICTIMA
-                    ):
+                    if isinstance(item, POI):
+                        item.revelado = True
                         nodo.contenido.remove(item)
-                        self.victimas_perdidas += 1
+                        self.pois_perdidos.append(item)
                         self._marcar_nodo(nodo)
-                        self._print(
-                            f"[BAJA] Víctima quemada en {nodo.pos} "
-                            f"({self.victimas_perdidas}/4)"
-                        )
+                        if item.tipo == TipoPOI.VICTIMA:
+                            self.victimas_perdidas += 1
+                            self._print(
+                                f"[BAJA] Víctima quemada en {nodo.pos} "
+                                f"({self.victimas_perdidas}/4)"
+                            )
+                        else:
+                            self._print(
+                                f"[BAJA] Falsa alarma quemada en {nodo.pos}"
+                            )
 
                     elif type(item).__name__ == "Rescuer":
                         # 1. Calcular la ambulancia más cercana ("as the crow flies")
@@ -838,6 +917,7 @@ class FlashPointModel(Model):
             f"Víctimas: {self.victimas_salvadas} Salvadas, "
             f"{self.victimas_perdidas} Perdidas | "
             f"Estado: {self.estado_juego}"
+            + (f" | {self._texto_visualizacion}" if self._texto_visualizacion else "")
         )
 
         plt.draw()

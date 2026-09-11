@@ -65,6 +65,7 @@ class Rescuer(Agent):
             "estado": self.estado.name
         })
         self.model._marcar_agente(self)
+        self.model._visualizar_accion_agente(self)
 
     def step(self):
         self._iniciar_turno()
@@ -148,7 +149,7 @@ class Rescuer(Agent):
             elif self.role == Role.SEARCHER:
                 return arista.hp * 6.0  
             else:
-                return arista.hp * 3.0  
+                return arista.hp * 6.0  
 
         return 0
 
@@ -161,12 +162,12 @@ class Rescuer(Agent):
             return float('inf')
 
         if self.role == Role.SEARCHER and nodo.estado_fuego != EstadoFuego.LIMPIO:
-            peso_base += 4.0
+            peso_base += 1.0
         elif self.role == Role.SOLDIER:
             if nodo.estado_fuego == EstadoFuego.FUEGO:
-                return 0.5
+                return 1
             if nodo.estado_fuego == EstadoFuego.HUMO:
-                return 0.75
+                return 1
 
         return max(1.0, peso_base)
 
@@ -223,7 +224,11 @@ class Rescuer(Agent):
                 menor_costo_total = costo_total
                 mejor_poi = poi_pos
 
-        if mejor_poi:
+        if mejor_poi is not None:
+            for pos, owner in list(self.model.pois_reclamados.items()):
+                if owner == self and pos != mejor_poi:
+                    del self.model.pois_reclamados[pos]
+
             # Marcar el POI como reclamado por este agente para evitar conflictos
             self.model.pois_reclamados[mejor_poi] = self
 
@@ -342,7 +347,10 @@ class Rescuer(Agent):
 
         if self._gastar_ap(2):
             arista.golpear()
-            self.model.marcadores_dano -= 1
+            self.model.marcadores_dano = max(
+                0,
+                self.model.marcadores_dano - 1
+            )
             self.registrar_accion(AgentAction.BREAK_WALL, siguiente_pos)
             return True
         return False
@@ -373,6 +381,9 @@ class Rescuer(Agent):
                 return True
 
         if nodo_objetivo.estado_fuego == EstadoFuego.FUEGO:
+            if self.role == Role.SOLDIER and not completamente:
+                return False
+
             costo = 2 if completamente else 1
             if self._gastar_ap(costo):
                 nodo_objetivo.estado_fuego = EstadoFuego.LIMPIO if completamente else EstadoFuego.HUMO
@@ -383,6 +394,39 @@ class Rescuer(Agent):
 
     def _ejecutar_estado_search(self):
         # Estado SEARCH: Buscar POIs activos y extinguir amenazas si es necesario
+        if self.role == Role.SEARCHER:
+            nodo_actual = self.model.mapa_nodos[self.pos]
+
+            for nodo_vecino, arista in nodo_actual.vecinos.items():
+                if isinstance(arista, Muro) and arista.hp > 0:
+                    continue
+                if isinstance(arista, Puerta) and arista.cerrado:
+                    continue
+                if (
+                    nodo_vecino.estado_fuego == EstadoFuego.HUMO
+                    and self.extinguir(nodo_vecino.pos)
+                ):
+                    return True
+
+            if (
+                nodo_actual.estado_fuego == EstadoFuego.HUMO
+                and self.extinguir(self.pos)
+            ):
+                return True
+
+            poi_objetivo = self._seleccionar_mejor_poi()
+            if poi_objetivo is not None:
+                ruta, _ = self._encontrar_ruta_optima([poi_objetivo])
+                if ruta and len(ruta) >= 2:
+                    siguiente_pos = ruta[1]
+                    siguiente_nodo = self.model.mapa_nodos[siguiente_pos]
+                    if siguiente_nodo.estado_fuego == EstadoFuego.FUEGO:
+                        if self._extinguir_amenaza_adjacente():
+                            return True
+                    return self._avanzar_hacia(siguiente_pos)
+
+            return self._extinguir_amenaza_adjacente()
+
         if self.role != Role.SEARCHER:
             if self._extinguir_amenaza_adjacente():
                 return True
@@ -392,19 +436,28 @@ class Rescuer(Agent):
             if ruta_fuego and len(ruta_fuego) >= 2:
                 return self._avanzar_hacia(ruta_fuego[1])
 
-        if self._hay_fuego_critico(umbral=4):
-            if self._extinguir_amenaza_adjacente():
-                return True
+            if self._hay_fuego_critico(umbral=4):
+                if self._extinguir_amenaza_adjacente():
+                    return True
 
         poi_objetivo = self._seleccionar_mejor_poi()
-        if not poi_objetivo:
+        if poi_objetivo is None:
             return self._extinguir_amenaza_adjacente()
 
         ruta, _ = self._encontrar_ruta_optima([poi_objetivo])
         if not ruta or len(ruta) < 2:
             return self._extinguir_amenaza_adjacente()
 
-        return self._avanzar_hacia(ruta[1])
+        siguiente_pos = ruta[1]
+        siguiente_nodo = self.model.mapa_nodos[siguiente_pos]
+        if (
+            self.role == Role.SEARCHER
+            and siguiente_nodo.estado_fuego == EstadoFuego.FUEGO
+            and self._extinguir_objetivo(siguiente_pos)
+        ):
+            return True
+
+        return self._avanzar_hacia(siguiente_pos)
 
     def _ejecutar_estado_escape(self):
         # Estado ESCAPE: Llevar víctima a la salida más cercana y extinguir amenazas si es necesario
@@ -413,14 +466,17 @@ class Rescuer(Agent):
         
         # Si el fuego bloquea completamente el camino a cualquier salida
         if not ruta or len(ruta) < 2 or costo == float('inf'):
-            self._soltar_victima()
             return self._extinguir_amenaza_adjacente()
 
-        exito = self._avanzar_hacia(ruta[1])
-        if not exito:
-            # Si el movimiento falla por obstáculo o fuego
-            self._soltar_victima()
-            return self._extinguir_amenaza_adjacente()
+        siguiente_pos = ruta[1]
+        siguiente_nodo = self.model.mapa_nodos[siguiente_pos]
+        if siguiente_nodo.estado_fuego != EstadoFuego.LIMPIO:
+            if self._extinguir_objetivo(siguiente_pos):
+                return True
+            return False
+
+        if not self._avanzar_hacia(siguiente_pos):
+            return False
 
         return True
 
@@ -430,7 +486,13 @@ class Rescuer(Agent):
             return True
 
         nodo_actual = self.model.mapa_nodos[self.pos]
-        for nodo_vecino, arista in nodo_actual.vecinos.items():
+        vecinos = list(nodo_actual.vecinos.items())
+        if self.role == Role.SOLDIER:
+            vecinos.sort(
+                key=lambda item: item[0].estado_fuego != EstadoFuego.FUEGO
+            )
+
+        for nodo_vecino, arista in vecinos:
             if isinstance(arista, Muro) and arista.hp > 0:
                 continue
             if isinstance(arista, Puerta) and arista.cerrado:
