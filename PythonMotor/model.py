@@ -90,7 +90,9 @@ class FlashPointModel(Model):
             if any(isinstance(c, POI) for c in nodo.contenido)
         ]
 
-        agentes_disponibles = list(self.agents)
+        agentes_disponibles = sorted(
+            self.agents, key=lambda agente: agente.unique_id
+        )
 
         for poi_pos in posiciones_poi:
             if not agentes_disponibles:
@@ -153,7 +155,8 @@ class FlashPointModel(Model):
                 if agente.role_bloqueado:
                     agente.role_bloqueado = False
 
-        total_agentes = len(self.agents)
+        agentes = sorted(self.agents, key=lambda agente: agente.unique_id)
+        total_agentes = len(agentes)
         fuegos_activos = sum(
             1
             for nodo in self.mapa_nodos.values()
@@ -174,17 +177,17 @@ class FlashPointModel(Model):
         # pero nunca pueden ser elegidos como candidatos para (des)promover:
         # deben completar su misión de ida y vuelta primero.
         searchers_actuales = [
-            agente for agente in self.agents if agente.role == Role.SEARCHER
+            agente for agente in agentes if agente.role == Role.SEARCHER
         ]
         soldiers_actuales = [
-            agente for agente in self.agents if agente.role == Role.SOLDIER
+            agente for agente in agentes if agente.role == Role.SOLDIER
         ]
         diferencia = objetivo_searchers - len(searchers_actuales)
 
         if diferencia > 0:
             candidatos = sorted(
                 (a for a in soldiers_actuales if not a.role_bloqueado),
-                key=lambda agente: agente.llevando_victima
+                key=lambda agente: (agente.llevando_victima, agente.unique_id)
             )
             for agente in candidatos[:diferencia]:
                 agente.role = Role.SEARCHER
@@ -192,7 +195,7 @@ class FlashPointModel(Model):
         elif diferencia < 0:
             candidatos = sorted(
                 (a for a in searchers_actuales if not a.role_bloqueado),
-                key=lambda agente: agente.llevando_victima
+                key=lambda agente: (agente.llevando_victima, agente.unique_id)
             )
             for agente in candidatos[:abs(diferencia)]:
                 agente.role = Role.SOLDIER
@@ -213,7 +216,7 @@ class FlashPointModel(Model):
 
         self._recalcular_roles_dinamicos()
 
-        for agent in self.agents:
+        for agent in sorted(self.agents, key=lambda agente: agente.unique_id):
             agent.step()
             self.evaluar_estado_juego()
             if self.estado_juego != "EN_CURSO":
@@ -278,7 +281,7 @@ class FlashPointModel(Model):
                     if item.tipo == TipoPOI.VICTIMA:
                         self.victimas_perdidas += 1
                     self._marcar_nodo(nodo)
-        for agente in self.agents:
+        for agente in sorted(self.agents, key=lambda agente: agente.unique_id):
             if agente.llevando_victima:
                 agente.llevando_victima = False
                 self.victimas_perdidas += 1
@@ -803,7 +806,10 @@ class FlashPointModel(Model):
             "height": self.grid.height,
             "nodes": self._exportar_nodos_dto(),
             "edges": self._exportar_aristas_dto(),
-            "agents": [self._agente_a_dto(agent) for agent in self.agents],
+            "agents": [
+                self._agente_a_dto(agent)
+                for agent in sorted(self.agents, key=lambda agente: agente.unique_id)
+            ],
             "poi_tracker": self._poi_tracker_dto()
         }
 
@@ -890,7 +896,9 @@ class FlashPointModel(Model):
                 "edges": [self._arista_a_dto(key) for key in self.aristas_afectadas],
                 "agents": [
                     self._agente_a_dto(agent)
-                    for agent in self.agents
+                    for agent in sorted(
+                        self.agents, key=lambda agente: agente.unique_id
+                    )
                     if agent.unique_id in self.agentes_afectados
                 ]
             }

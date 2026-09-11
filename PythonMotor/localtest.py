@@ -1,5 +1,9 @@
+import random
+
 import matplotlib.pyplot as plt
 from model import FlashPointModel
+
+random.seed(20260910)
 
 # Activar modo interactivo de matplotlib
 plt.ion()

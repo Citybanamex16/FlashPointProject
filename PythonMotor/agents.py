@@ -44,7 +44,6 @@ class RandomRescuer(Agent):
         self.posicion_objetivo = None
         self._poi_objetivo = None
         self._fuego_objetivo = None
-        self._contencion = False
         self.acciones_turno = []
         self.eventos_turno = []
         self.estado = AgentStatus.ACTIVE
@@ -140,12 +139,13 @@ class RandomRescuer(Agent):
                 self.llevando_victima
                 or vecino.estado_fuego == EstadoFuego.FUEGO
             ) else 1
-            if (
-                self.ap >= (4 if vecino.estado_fuego == EstadoFuego.FUEGO else costo_movimiento)
-                and not (
-                    self.llevando_victima
-                    and vecino.estado_fuego == EstadoFuego.FUEGO
-                )
+            # Entrar al fuego exige AP para apagarlo antes de terminar.
+            ap_necesario = (
+                4 if vecino.estado_fuego == EstadoFuego.FUEGO
+                else costo_movimiento
+            )
+            if self.ap >= ap_necesario and not (
+                self.llevando_victima and vecino.estado_fuego == EstadoFuego.FUEGO
             ):
                 acciones.append((AgentAction.MOVE, vecino.pos))
 
@@ -193,6 +193,7 @@ class RandomRescuer(Agent):
     def _interactuar_celda_actual(self):
         nodo = self.model.mapa_nodos[self.pos]
 
+        # Los POI se revelan y recogen al entrar en su celda.
         for item in list(nodo.contenido):
             if not isinstance(item, POI):
                 continue
@@ -250,8 +251,12 @@ class Rescuer(RandomRescuer):
         self._interactuar_celda_actual()
 
         while self.ap > 0 and self.model.estado_juego == "EN_CURSO":
-            accion = self._accion_rescatista() if self.role == Role.SEARCHER else self._accion_soldado()
-            if self._debe_guardar_ap(accion):
+            accion = (
+                self._accion_rescatista()
+                if self.role == Role.SEARCHER
+                else self._accion_soldado()
+            )
+            if self._termina_expuesto(accion):
                 break
             if accion is None:
                 legales = [
@@ -266,31 +271,41 @@ class Rescuer(RandomRescuer):
 
         self._terminar_turno()
 
+    def _termina_expuesto(self, accion):
+        if accion is None or accion[0] != AgentAction.MOVE:
+            return False
+        destino = self.model.mapa_nodos[accion[1]]
+        costo = 2 if self.llevando_victima else 1
+        if self.ap != costo or destino.estado_fuego != EstadoFuego.LIMPIO:
+            return False
+        # Conserva AP si el único movimiento restante termina junto al fuego.
+        return any(
+            vecino.estado_fuego == EstadoFuego.FUEGO
+            and not (isinstance(arista, Muro) and arista.hp > 0)
+            and not (isinstance(arista, Puerta) and arista.cerrado)
+            for vecino, arista in destino.vecinos.items()
+        )
+
     def _asignar_roles(self):
         if getattr(self.model, "_roles_step", None) == self.model.steps:
             return
         self.model._roles_step = self.model.steps
-        self.model.pois_reclamados.clear()
-        self.model.fuegos_reclamados.clear()
-        agentes = list(self.model.agents)
-        soldados = 2
+        agentes = sorted(self.model.agents, key=lambda agente: agente.unique_id)
+        soldados = getattr(self.model, "_soldados_objetivo", 2)
+        fuegos = sum(
+            nodo.estado_fuego == EstadoFuego.FUEGO
+            for nodo in self.model.mapa_nodos.values()
+        )
+        if fuegos >= 10:
+            soldados = 3
+        elif fuegos <= 6:
+            soldados = 2
+        # Entre 7 y 9 fuegos se conserva la mezcla anterior.
+        self.model._soldados_objetivo = soldados
         libres = [a for a in agentes if not a.llevando_victima]
         elegidos = set(libres[:soldados])
         for agente in agentes:
             agente.role = Role.SOLDIER if agente in elegidos else Role.SEARCHER
-            agente._contencion = agente is libres[0] if libres else False
-
-    def _debe_guardar_ap(self, accion):
-        if self.llevando_victima or self.ap != 1 or accion is None:
-            return False
-        if accion[0] != AgentAction.MOVE:
-            return False
-        pois = [
-            pos for pos, nodo in self.model.mapa_nodos.items()
-            if any(isinstance(item, POI) for item in nodo.contenido)
-        ]
-        ruta = self._ruta(pois)
-        return ruta is not None and len(ruta) == 2
 
     def _ejecutar(self, accion):
         tipo, objetivo = accion
@@ -331,12 +346,7 @@ class Rescuer(RandomRescuer):
             pos for pos, nodo in self.model.mapa_nodos.items()
             if any(isinstance(item, POI) for item in nodo.contenido)
         ]
-        rutas = [
-            (len(ruta), pos)
-            for pos in pois
-            if self.model.pois_reclamados.get(pos) in (None, self)
-            and (ruta := self._ruta([pos]))
-        ]
+        rutas = [(len(ruta), pos) for pos in pois if (ruta := self._ruta([pos]))]
         if not rutas:
             return self._accion_soldado()
         minimo = min(costo for costo, _ in rutas)
@@ -344,10 +354,11 @@ class Rescuer(RandomRescuer):
             return self._accion_soldado()
         destinos = sorted(pos for costo, pos in rutas if costo <= minimo + 1)
         destinos = [destinos[self.unique_id % len(destinos)]]
-        self.model.pois_reclamados[destinos[0]] = self
         return self._hacia(destinos, evitar_fuego=self.llevando_victima)
 
     def _accion_soldado(self):
+        if self.llevando_victima:
+            return self._hacia(self._salidas(), evitar_fuego=True)
         actual = self.model.mapa_nodos[self.pos]
         cercanos = [actual] if actual.estado_fuego == EstadoFuego.FUEGO else []
         cercanos.extend(
@@ -359,28 +370,22 @@ class Rescuer(RandomRescuer):
         if cercanos and self.ap >= 2:
             objetivo = max(cercanos, key=lambda nodo: self._valor_fuego(nodo.pos))
             return AgentAction.EXTINGUISH, objetivo.pos
-        fuegos = [pos for pos, nodo in self.model.mapa_nodos.items() if nodo.estado_fuego == EstadoFuego.FUEGO]
+        fuegos = [
+            pos for pos, nodo in self.model.mapa_nodos.items()
+            if nodo.estado_fuego == EstadoFuego.FUEGO
+        ]
         if not fuegos:
             humos = [pos for pos, nodo in self.model.mapa_nodos.items() if nodo.estado_fuego == EstadoFuego.HUMO]
             return self._hacia(humos)
 
-        if self._contencion:
-            criticos = [pos for pos in fuegos if self._es_contencion(pos)]
-            fuegos = criticos or fuegos
         rutas = []
         for fuego in fuegos:
-            if self.model.fuegos_reclamados.get(fuego) not in (None, self):
-                continue
             ruta = self._ruta([fuego], evitar_fuego=True, destino_fuego=True)
             if ruta:
                 rutas.append((len(ruta), -self._valor_fuego(fuego), fuego))
         if not rutas:
             return None
-        minimo = min(costo for costo, _, _ in rutas)
-        cercanos = [ruta for ruta in rutas if ruta[0] <= minimo + 2]
-        destino = min(cercanos, key=lambda ruta: (ruta[1], ruta[0]))[2]
-        self.model.fuegos_reclamados[destino] = self
-        return self._hacia([destino], evitar_fuego=True, destino_fuego=True)
+        return self._hacia([min(rutas)[2]], evitar_fuego=True, destino_fuego=True)
 
     def _hacia(self, destinos, evitar_fuego=False, destino_fuego=False):
         if not destinos:
@@ -401,10 +406,21 @@ class Rescuer(RandomRescuer):
         arista = actual.vecinos[destino]
         if isinstance(arista, Puerta) and arista.cerrado and self.ap >= 1:
             return AgentAction.OPEN_DOOR, siguiente
-        if destino.estado_fuego != EstadoFuego.LIMPIO and self.ap >= (1 if destino.estado_fuego == EstadoFuego.HUMO else 2):
+        if (
+            destino.estado_fuego != EstadoFuego.LIMPIO
+            and self.ap >= (
+                1 if destino.estado_fuego == EstadoFuego.HUMO else 2
+            )
+        ):
             return AgentAction.EXTINGUISH, siguiente
-        costo = 2 if self.llevando_victima or destino.estado_fuego == EstadoFuego.FUEGO else 1
-        if self.ap >= costo and not (self.llevando_victima and destino.estado_fuego == EstadoFuego.FUEGO):
+        costo = 2 if (
+            self.llevando_victima
+            or destino.estado_fuego == EstadoFuego.FUEGO
+        ) else 1
+        if self.ap >= costo and not (
+            self.llevando_victima
+            and destino.estado_fuego == EstadoFuego.FUEGO
+        ):
             return AgentAction.MOVE, siguiente
         return None
 
@@ -426,9 +442,16 @@ class Rescuer(RandomRescuer):
             for vecino, arista in self.model.mapa_nodos[pos].vecinos.items():
                 if isinstance(arista, Muro) and arista.hp > 0:
                     continue
-                if evitar_fuego and vecino.estado_fuego == EstadoFuego.FUEGO and not (destino_fuego and vecino.pos in destinos):
+                if (
+                    evitar_fuego
+                    and vecino.estado_fuego == EstadoFuego.FUEGO
+                    and not (destino_fuego and vecino.pos in destinos)
+                ):
                     continue
-                paso = 2 if self.llevando_victima or vecino.estado_fuego == EstadoFuego.FUEGO else 1
+                paso = 2 if (
+                    self.llevando_victima
+                    or vecino.estado_fuego == EstadoFuego.FUEGO
+                ) else 1
                 if isinstance(arista, Puerta) and arista.cerrado:
                     paso += 1
                 nuevo = costo + paso
@@ -448,7 +471,10 @@ class Rescuer(RandomRescuer):
             for vecino, arista in self.model.mapa_nodos[pos].vecinos.items():
                 if pos == origen and isinstance(arista, Muro) and arista.hp > 0:
                     muros += 3 if arista.hp == 1 else 1
-                if isinstance(arista, Muro) and arista.hp > 0 or isinstance(arista, Puerta) and arista.cerrado:
+                if (
+                    isinstance(arista, Muro) and arista.hp > 0
+                    or isinstance(arista, Puerta) and arista.cerrado
+                ):
                     continue
                 if vecino.estado_fuego == EstadoFuego.FUEGO and vecino.pos not in vistos:
                     vistos.add(vecino.pos)
@@ -462,15 +488,6 @@ class Rescuer(RandomRescuer):
         bono = 4 if 3 <= x <= 6 and 3 <= y <= 5 else 0
         bono += 3 if 6 <= x <= 8 and 4 <= y <= 6 else 0
         return self._riesgo(origen) + bono
-
-    def _es_contencion(self, pos):
-        nodo = self.model.mapa_nodos[pos]
-        for vecino, arista in nodo.vecinos.items():
-            if isinstance(arista, Muro) and arista.hp == 1:
-                return True
-            if any(isinstance(item, POI) for item in vecino.contenido):
-                return True
-        return False
 
     def _salidas(self):
         return [pos for pos in self.model.mapa_nodos if self._es_salida(pos)]
