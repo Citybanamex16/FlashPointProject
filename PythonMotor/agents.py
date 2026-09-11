@@ -99,7 +99,6 @@ class RandomRescuer(Agent):
         self.posicion_anterior = self.pos
         self.posicion_objetivo = None
         self._poi_objetivo = None
-        self._fuego_objetivo = None
         self.accion_actual = AgentAction.IDLE
         self.acciones_turno = []
         self.eventos_turno = []
@@ -317,7 +316,7 @@ class Rescuer(RandomRescuer):
             self._extinguir(objetivo)
 
     def _accion_rescatista(self):
-        if not self.llevando_victima and self.ap >= 2:
+        if self.ap >= 2:
             actual = self.model.mapa_nodos[self.pos]
             fuegos = [actual] if actual.estado_fuego == EstadoFuego.FUEGO else []
             fuegos.extend(
@@ -341,7 +340,7 @@ class Rescuer(RandomRescuer):
             if humos:
                 return AgentAction.EXTINGUISH, humos[0].pos
         if self.llevando_victima:
-            return self._hacia(self._salidas(), evitar_fuego=True)
+            return self._hacia(self._salidas())
         pois = [
             pos for pos, nodo in self.model.mapa_nodos.items()
             if any(isinstance(item, POI) for item in nodo.contenido)
@@ -354,11 +353,9 @@ class Rescuer(RandomRescuer):
             return self._accion_soldado()
         destinos = sorted(pos for costo, pos in rutas if costo <= minimo + 1)
         destinos = [destinos[self.unique_id % len(destinos)]]
-        return self._hacia(destinos, evitar_fuego=self.llevando_victima)
+        return self._hacia(destinos)
 
     def _accion_soldado(self):
-        if self.llevando_victima:
-            return self._hacia(self._salidas(), evitar_fuego=True)
         actual = self.model.mapa_nodos[self.pos]
         cercanos = [actual] if actual.estado_fuego == EstadoFuego.FUEGO else []
         cercanos.extend(
@@ -370,13 +367,29 @@ class Rescuer(RandomRescuer):
         if cercanos and self.ap >= 2:
             objetivo = max(cercanos, key=lambda nodo: self._valor_fuego(nodo.pos))
             return AgentAction.EXTINGUISH, objetivo.pos
+        if self.llevando_victima:
+            self._fuego_objetivo = None
+            return self._hacia(self._salidas())
         fuegos = [
             pos for pos, nodo in self.model.mapa_nodos.items()
             if nodo.estado_fuego == EstadoFuego.FUEGO
         ]
         if not fuegos:
+            self._fuego_objetivo = None
             humos = [pos for pos, nodo in self.model.mapa_nodos.items() if nodo.estado_fuego == EstadoFuego.HUMO]
             return self._hacia(humos)
+
+        if self._fuego_objetivo in fuegos:
+            ruta = self._ruta(
+                [self._fuego_objetivo], evitar_fuego=True, destino_fuego=True
+            )
+            if ruta and len(ruta) <= 5:
+                return self._hacia(
+                    [self._fuego_objetivo],
+                    evitar_fuego=True,
+                    destino_fuego=True,
+                )
+        self._fuego_objetivo = None
 
         rutas = []
         for fuego in fuegos:
@@ -385,7 +398,10 @@ class Rescuer(RandomRescuer):
                 rutas.append((len(ruta), -self._valor_fuego(fuego), fuego))
         if not rutas:
             return None
-        return self._hacia([min(rutas)[2]], evitar_fuego=True, destino_fuego=True)
+        self._fuego_objetivo = min(rutas)[2]
+        return self._hacia(
+            [self._fuego_objetivo], evitar_fuego=True, destino_fuego=True
+        )
 
     def _hacia(self, destinos, evitar_fuego=False, destino_fuego=False):
         if not destinos:
